@@ -30,7 +30,7 @@ export interface WorkflowNode {
   label: string;
   x: number;
   y: number;
-  properties: Record<string, string | number | boolean>;
+  properties: Record<string, unknown>;
 }
 
 export interface WorkflowEdge {
