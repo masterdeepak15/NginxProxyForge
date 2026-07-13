@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import type { PointerEvent as RPointerEvent, DragEvent as RDragEvent } from "react";
 import {
   ArrowLeft,
   Play,
@@ -15,24 +16,45 @@ import {
   Network,
   Cable,
   Layers,
+  AlertTriangle,
+  FileCode,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Trash2,
 } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { fetchWorkflow } from "@/store/slices/workflowsSlice";
+import {
+  fetchWorkflow,
+  addNode,
+  moveNode,
+  addEdge,
+  deleteEdge,
+  deleteNode,
+  updateNodeProperties,
+  updateNodeLabel,
+} from "@/store/slices/workflowsSlice";
 import type { NodeType, WorkflowNode } from "@/services/api";
+import { validateNode } from "@/lib/nodeSchemas";
+import { PropertyPanel } from "@/components/workspace/PropertyPanel";
+import { NginxPreviewDialog } from "@/components/workspace/NginxPreviewDialog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/workspace/$id")({
   head: ({ params }) => ({
     meta: [
       { title: `Workflow ${params.id} · ProxyForge` },
-      { name: "description", content: "Visual node editor for the selected workflow." },
+      { name: "description", content: "Visual node editor that compiles to nginx.conf." },
     ],
   }),
   component: WorkflowEditor,
 });
+
+const NODE_W = 176;
+const NODE_H = 64;
+const HANDLE_R = 6;
 
 const nodeIcon: Record<NodeType, typeof Server> = {
   Listener: Server,
@@ -52,18 +74,179 @@ const paletteGroups: { label: string; items: NodeType[] }[] = [
   { label: "Entry", items: ["Listener", "Domain", "SSL"] },
   { label: "Routing", items: ["Route", "Auth", "RateLimit", "Cache"] },
   { label: "Upstream", items: ["LB", "Backend"] },
-  { label: "L4", items: ["TCP", "UDP"] },
+  { label: "L4 Stream", items: ["TCP", "UDP"] },
 ];
+
+interface Pending {
+  fromId: string;
+  x: number;
+  y: number;
+}
 
 function WorkflowEditor() {
   const { id } = Route.useParams();
   const dispatch = useAppDispatch();
   const workflow = useAppSelector((s) => s.workflows.current);
-  const [selected, setSelected] = useState<string | null>(null);
+
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
+    null,
+  );
+  const dragRef = useRef<{ id: string; offX: number; offY: number } | null>(null);
 
   useEffect(() => {
     dispatch(fetchWorkflow(id));
   }, [dispatch, id]);
+
+  const toWorld = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) return { x: 0, y: 0 };
+      return {
+        x: (clientX - rect.left - pan.x) / scale,
+        y: (clientY - rect.top - pan.y) / scale,
+      };
+    },
+    [pan, scale],
+  );
+
+  // Node move
+  const onNodePointerDown = (e: RPointerEvent<HTMLDivElement>, n: WorkflowNode) => {
+    if ((e.target as HTMLElement).closest("[data-handle]")) return;
+    if ((e.target as HTMLElement).closest("input, textarea, button")) return;
+    e.stopPropagation();
+    setSelectedNode(n.id);
+    setSelectedEdge(null);
+    const world = toWorld(e.clientX, e.clientY);
+    dragRef.current = { id: n.id, offX: world.x - n.x, offY: world.y - n.y };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  };
+
+  const onNodePointerMove = (e: RPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    const world = toWorld(e.clientX, e.clientY);
+    dispatch(
+      moveNode({
+        id: dragRef.current.id,
+        x: Math.round(world.x - dragRef.current.offX),
+        y: Math.round(world.y - dragRef.current.offY),
+      }),
+    );
+  };
+
+  const onNodePointerUp = (e: RPointerEvent<HTMLDivElement>) => {
+    dragRef.current = null;
+    (e.currentTarget as HTMLDivElement).releasePointerCapture?.(e.pointerId);
+  };
+
+  // Connection drag
+  const onOutputPointerDown = (e: RPointerEvent<HTMLDivElement>, n: WorkflowNode) => {
+    e.stopPropagation();
+    const world = toWorld(e.clientX, e.clientY);
+    setPending({ fromId: n.id, x: world.x, y: world.y });
+  };
+
+  const onViewportPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
+    if (pending) {
+      const world = toWorld(e.clientX, e.clientY);
+      setPending({ ...pending, x: world.x, y: world.y });
+    }
+    if (panRef.current) {
+      setPan({
+        x: panRef.current.panX + (e.clientX - panRef.current.startX),
+        y: panRef.current.panY + (e.clientY - panRef.current.startY),
+      });
+    }
+  };
+
+  const onViewportPointerUp = () => {
+    setPending(null);
+    panRef.current = null;
+  };
+
+  const onInputPointerUp = (e: RPointerEvent<HTMLDivElement>, n: WorkflowNode) => {
+    if (!pending) return;
+    e.stopPropagation();
+    dispatch(addEdge({ from: pending.fromId, to: n.id }));
+    setPending(null);
+  };
+
+  // Pan
+  const onViewportPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
+    if (e.button === 1 || e.shiftKey) {
+      panRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+      e.preventDefault();
+    } else if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg) {
+      setSelectedNode(null);
+      setSelectedEdge(null);
+    }
+  };
+
+  // Zoom
+  const onWheel = (e: React.WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const delta = -e.deltaY * 0.001;
+    const next = Math.min(2, Math.max(0.4, scale + delta));
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    // Keep the point under cursor fixed
+    setPan({
+      x: mx - ((mx - pan.x) * next) / scale,
+      y: my - ((my - pan.y) * next) / scale,
+    });
+    setScale(next);
+  };
+
+  // Drop from palette
+  const onDrop = (e: RDragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const type = e.dataTransfer.getData("application/x-node") as NodeType;
+    if (!type) return;
+    const world = toWorld(e.clientX, e.clientY);
+    dispatch(addNode({ type, x: Math.round(world.x - NODE_W / 2), y: Math.round(world.y - NODE_H / 2) }));
+  };
+
+  // Keyboard delete
+  useEffect(() => {
+    const handler = (ev: KeyboardEvent) => {
+      const tag = (ev.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (ev.key === "Delete" || ev.key === "Backspace") {
+        if (selectedNode) {
+          dispatch(deleteNode(selectedNode));
+          setSelectedNode(null);
+        } else if (selectedEdge) {
+          dispatch(deleteEdge(selectedEdge));
+          setSelectedEdge(null);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [dispatch, selectedNode, selectedEdge]);
+
+  const nodeErrors = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    if (!workflow) return map;
+    for (const n of workflow.nodes) {
+      const r = validateNode(n.type, n.properties);
+      if (!r.ok) map[n.id] = true;
+    }
+    return map;
+  }, [workflow]);
+
+  const hasErrors = Object.keys(nodeErrors).length > 0;
+  const selected = workflow?.nodes.find((n) => n.id === selectedNode) ?? null;
 
   if (!workflow || workflow.id !== id) {
     return (
@@ -72,8 +255,6 @@ function WorkflowEditor() {
       </div>
     );
   }
-
-  const selectedNode = workflow.nodes.find((n) => n.id === selected) ?? null;
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
@@ -91,30 +272,41 @@ function WorkflowEditor() {
               <h1 className="text-base font-semibold">{workflow.name}</h1>
               <StatusBadge status={workflow.status} />
               <span className="text-xs text-muted-foreground">v{workflow.version}</span>
+              {hasErrors && (
+                <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] text-destructive">
+                  <AlertTriangle className="h-3 w-3" /> {Object.keys(nodeErrors).length} errors
+                </span>
+              )}
             </div>
             <div className="text-xs text-muted-foreground">{workflow.description}</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
+            <FileCode className="h-4 w-4" /> View nginx.conf
+          </Button>
           <Button variant="outline" size="sm">
             <History className="h-4 w-4" /> Versions
           </Button>
           <Button variant="outline" size="sm">
             <Save className="h-4 w-4" /> Save draft
           </Button>
-          <Button size="sm">
+          <Button size="sm" disabled={hasErrors}>
             <Play className="h-4 w-4" /> Deploy
           </Button>
         </div>
       </div>
 
       {/* 3-pane workspace */}
-      <div className="grid flex-1 grid-cols-[220px_1fr_280px] overflow-hidden">
+      <div className="grid flex-1 grid-cols-[220px_1fr_320px] overflow-hidden">
         {/* Palette */}
         <aside className="overflow-y-auto border-r border-border/60 bg-card/30 p-3">
           <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
             Node palette
           </div>
+          <p className="mb-3 px-2 text-[10px] text-muted-foreground/80">
+            Drag onto the canvas. Connect nodes by dragging from a right dot to a left dot.
+          </p>
           {paletteGroups.map((g) => (
             <div key={g.label} className="mb-4">
               <div className="mb-1 px-2 text-[10px] uppercase tracking-wider text-muted-foreground/70">
@@ -126,7 +318,12 @@ function WorkflowEditor() {
                   return (
                     <div
                       key={t}
-                      className="flex cursor-grab items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-sm hover:border-border hover:bg-background"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("application/x-node", t);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      className="flex cursor-grab items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-sm hover:border-border hover:bg-background active:cursor-grabbing"
                     >
                       <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                       {t}
@@ -138,118 +335,232 @@ function WorkflowEditor() {
           ))}
         </aside>
 
-        {/* Canvas */}
-        <div className="relative overflow-auto bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] [background-size:20px_20px]">
-          <div className="relative min-h-full min-w-[1100px]" style={{ height: 500 }}>
-            <svg className="pointer-events-none absolute inset-0 h-full w-full">
+        {/* Canvas viewport */}
+        <div
+          ref={viewportRef}
+          className="relative overflow-hidden bg-background"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={onDrop}
+          onPointerDown={onViewportPointerDown}
+          onPointerMove={onViewportPointerMove}
+          onPointerUp={onViewportPointerUp}
+          onWheel={onWheel}
+        >
+          {/* Zoom / fit controls */}
+          <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border border-border/60 bg-card/95 p-1 shadow-sm backdrop-blur">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={() => setScale((s) => Math.max(0.4, s - 0.1))}
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <div className="w-10 text-center text-[10px] font-mono text-muted-foreground">
+              {Math.round(scale * 100)}%
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={() => setScale((s) => Math.min(2, s + 0.1))}
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              onClick={() => {
+                setScale(1);
+                setPan({ x: 0, y: 0 });
+              }}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
+          {/* Hint */}
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-md bg-card/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
+            Shift+drag to pan · Ctrl/⌘+wheel to zoom · Del to remove
+          </div>
+
+          {/* World (pan/zoom transformed) */}
+          <div
+            data-canvas-bg
+            className="absolute inset-0"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+              transformOrigin: "0 0",
+              backgroundImage:
+                "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
+              backgroundSize: "20px 20px",
+              width: "4000px",
+              height: "3000px",
+            }}
+          >
+            <svg
+              className="pointer-events-none absolute left-0 top-0"
+              width={4000}
+              height={3000}
+            >
               {workflow.edges.map((e) => {
                 const from = workflow.nodes.find((n) => n.id === e.from);
                 const to = workflow.nodes.find((n) => n.id === e.to);
                 if (!from || !to) return null;
-                const x1 = from.x + 160;
-                const y1 = from.y + 32;
+                const x1 = from.x + NODE_W;
+                const y1 = from.y + NODE_H / 2;
                 const x2 = to.x;
-                const y2 = to.y + 32;
-                const dx = Math.abs(x2 - x1) * 0.5;
+                const y2 = to.y + NODE_H / 2;
+                const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
                 const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+                const active = selectedEdge === e.id;
                 return (
                   <path
                     key={e.id}
                     d={d}
                     fill="none"
-                    stroke="var(--color-primary)"
-                    strokeOpacity={0.5}
-                    strokeWidth={1.5}
+                    stroke={active ? "var(--color-destructive)" : "var(--color-primary)"}
+                    strokeOpacity={active ? 0.9 : 0.6}
+                    strokeWidth={active ? 2.5 : 1.8}
+                    className="pointer-events-auto cursor-pointer"
+                    style={{ pointerEvents: "stroke" }}
+                    onPointerDown={(ev) => {
+                      ev.stopPropagation();
+                      setSelectedEdge(e.id);
+                      setSelectedNode(null);
+                    }}
                   />
                 );
               })}
+              {pending &&
+                (() => {
+                  const from = workflow.nodes.find((n) => n.id === pending.fromId);
+                  if (!from) return null;
+                  const x1 = from.x + NODE_W;
+                  const y1 = from.y + NODE_H / 2;
+                  const dx = Math.max(40, Math.abs(pending.x - x1) * 0.5);
+                  const d = `M${x1},${y1} C${x1 + dx},${y1} ${pending.x - dx},${pending.y} ${pending.x},${pending.y}`;
+                  return (
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke="var(--color-primary)"
+                      strokeWidth={1.8}
+                      strokeDasharray="4 4"
+                    />
+                  );
+                })()}
             </svg>
-            {workflow.nodes.map((n) => (
-              <NodeCard
-                key={n.id}
-                node={n}
-                active={selected === n.id}
-                onClick={() => setSelected(n.id)}
-              />
-            ))}
+
+            {workflow.nodes.map((n) => {
+              const Icon = nodeIcon[n.type];
+              const active = selectedNode === n.id;
+              const invalid = nodeErrors[n.id];
+              return (
+                <div
+                  key={n.id}
+                  style={{ left: n.x, top: n.y, width: NODE_W }}
+                  className={cn(
+                    "absolute select-none rounded-lg border bg-card shadow-sm transition-shadow",
+                    active
+                      ? "border-primary ring-2 ring-primary/30"
+                      : invalid
+                        ? "border-destructive/60"
+                        : "border-border/60 hover:border-primary/50",
+                  )}
+                  onPointerDown={(e) => onNodePointerDown(e, n)}
+                  onPointerMove={onNodePointerMove}
+                  onPointerUp={onNodePointerUp}
+                >
+                  <div className="cursor-grab p-3 active:cursor-grabbing">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-primary">
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {n.type}
+                      </div>
+                      {invalid && (
+                        <AlertTriangle className="ml-auto h-3.5 w-3.5 text-destructive" />
+                      )}
+                    </div>
+                    <div className="mt-1 truncate text-sm font-medium">{n.label}</div>
+                  </div>
+
+                  {/* Input handle */}
+                  <div
+                    data-handle="in"
+                    onPointerUp={(e) => onInputPointerUp(e, n)}
+                    style={{
+                      left: -HANDLE_R,
+                      top: NODE_H / 2 - HANDLE_R,
+                      width: HANDLE_R * 2,
+                      height: HANDLE_R * 2,
+                    }}
+                    className="absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary"
+                  />
+
+                  {/* Output handle */}
+                  <div
+                    data-handle="out"
+                    onPointerDown={(e) => onOutputPointerDown(e, n)}
+                    style={{
+                      left: NODE_W - HANDLE_R,
+                      top: NODE_H / 2 - HANDLE_R,
+                      width: HANDLE_R * 2,
+                      height: HANDLE_R * 2,
+                    }}
+                    className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
 
         {/* Property panel */}
         <aside className="overflow-y-auto border-l border-border/60 bg-card/30 p-4">
-          <div className="mb-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-            Properties
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+              Properties
+            </div>
+            {selectedEdge && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-destructive"
+                onClick={() => {
+                  dispatch(deleteEdge(selectedEdge));
+                  setSelectedEdge(null);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Remove edge
+              </Button>
+            )}
           </div>
-          {selectedNode ? (
-            <div className="space-y-4">
-              <div>
-                <div className="text-xs text-muted-foreground">Type</div>
-                <div className="text-sm font-medium">{selectedNode.type}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Label</div>
-                <div className="text-sm font-medium">{selectedNode.label}</div>
-              </div>
-              <div className="border-t border-border/60 pt-4">
-                <div className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Config
-                </div>
-                {Object.keys(selectedNode.properties).length === 0 && (
-                  <div className="text-xs text-muted-foreground">No properties set.</div>
-                )}
-                {Object.entries(selectedNode.properties).map(([k, v]) => (
-                  <div key={k} className="mb-2">
-                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                      {k}
-                    </div>
-                    <div className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm font-mono">
-                      {String(v)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-md border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
-              Select a node on the canvas to edit its properties.
-            </div>
-          )}
+          <PropertyPanel
+            node={selected}
+            onChangeLabel={(label) =>
+              selected && dispatch(updateNodeLabel({ id: selected.id, label }))
+            }
+            onChangeProps={(props) =>
+              selected && dispatch(updateNodeProperties({ id: selected.id, properties: props }))
+            }
+            onDelete={() => {
+              if (!selected) return;
+              dispatch(deleteNode(selected.id));
+              setSelectedNode(null);
+            }}
+          />
         </aside>
       </div>
-    </div>
-  );
-}
 
-function NodeCard({
-  node,
-  active,
-  onClick,
-}: {
-  node: WorkflowNode;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const Icon = nodeIcon[node.type];
-  return (
-    <button
-      onClick={onClick}
-      style={{ left: node.x, top: node.y }}
-      className={cn(
-        "absolute w-40 rounded-lg border bg-card p-3 text-left shadow-sm transition-all",
-        active
-          ? "border-primary ring-2 ring-primary/30"
-          : "border-border/60 hover:border-primary/50",
-      )}
-    >
-      <div className="flex items-center gap-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-primary">
-          <Icon className="h-3.5 w-3.5" />
-        </div>
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          {node.type}
-        </div>
-      </div>
-      <div className="mt-2 truncate text-sm font-medium">{node.label}</div>
-    </button>
+      <NginxPreviewDialog
+        workflow={workflow}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
+    </div>
   );
 }
