@@ -92,6 +92,7 @@ export function generateNginxConfig(workflow: Workflow): string {
     const cache = firstOfType(chain, "Cache");
     const lb = firstOfType(chain, "LB");
     const backends = chain.filter((n) => n.type === "Backend");
+    const grpcs = chain.filter((n) => n.type === "GRPC");
     const routes = chain.filter((n) => n.type === "Route");
     const auth = firstOfType(chain, "Auth");
 
