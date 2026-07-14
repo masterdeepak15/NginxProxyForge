@@ -307,11 +307,15 @@ function WorkflowEditor() {
           <Button size="sm" disabled={hasErrors}>
             <Play className="h-4 w-4" /> Deploy
           </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? "Hide properties" : "Show properties"}>
+            {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
 
       {/* 3-pane workspace */}
-      <div className="grid flex-1 grid-cols-[220px_1fr_320px] overflow-hidden">
+      <div className={cn("grid flex-1 overflow-hidden", panelOpen ? "grid-cols-[220px_1fr_320px]" : "grid-cols-[220px_1fr]")}>
+
         {/* Palette */}
         <aside className="overflow-y-auto border-r border-border/60 bg-card/30 p-3">
           <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
