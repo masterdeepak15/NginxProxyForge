@@ -21,6 +21,7 @@ export type NodeType =
   | "Cache"
   | "LB"
   | "Backend"
+  | "GRPC"
   | "TCP"
   | "UDP";
 

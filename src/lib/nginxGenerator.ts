@@ -92,6 +92,7 @@ export function generateNginxConfig(workflow: Workflow): string {
     const cache = firstOfType(chain, "Cache");
     const lb = firstOfType(chain, "LB");
     const backends = chain.filter((n) => n.type === "Backend");
+    const grpcs = chain.filter((n) => n.type === "GRPC");
     const routes = chain.filter((n) => n.type === "Route");
     const auth = firstOfType(chain, "Auth");
 
@@ -153,8 +154,24 @@ export function generateNginxConfig(workflow: Workflow): string {
     }
 
     if (ssl && get(listener, "protocol") === "https") {
-      srv.push(line(1, `ssl_certificate ${get(ssl, "certPath")};`));
-      srv.push(line(1, `ssl_certificate_key ${get(ssl, "keyPath")};`));
+      const isLe = Boolean(get<boolean>(ssl, "leMode"));
+      const leIssued = isLe && String(get<string>(ssl, "leStatus", "")) === "issued";
+      let certRef = "";
+      let keyRef = "";
+      if (leIssued) {
+        certRef = get<string>(ssl, "certPath", "") || "/etc/letsencrypt/live/<domain>/fullchain.pem";
+        keyRef = get<string>(ssl, "keyPath", "") || "/etc/letsencrypt/live/<domain>/privkey.pem";
+      } else if (isLe) {
+        certRef = "/etc/letsencrypt/live/<pending>/fullchain.pem";
+        keyRef = "/etc/letsencrypt/live/<pending>/privkey.pem";
+      } else {
+        // Manual: inline PEM stored by backend, resolved to a managed path at deploy time.
+        srv.push(line(1, `# TLS material provided inline; backend writes it to a managed path.`));
+        certRef = `/etc/nginx/managed/${ssl.id}/fullchain.pem`;
+        keyRef = `/etc/nginx/managed/${ssl.id}/privkey.pem`;
+      }
+      srv.push(line(1, `ssl_certificate ${certRef};`));
+      srv.push(line(1, `ssl_certificate_key ${keyRef};`));
       const protos = get<string[]>(ssl, "protocols", []);
       if (protos.length) srv.push(line(1, `ssl_protocols ${protos.join(" ")};`));
       const ciphers = get<string>(ssl, "ciphers", "");
@@ -221,7 +238,19 @@ export function generateNginxConfig(workflow: Workflow): string {
         srv.push(...extras(2, r));
       }
 
-      if (backends.length) {
+      if (grpcs.length) {
+        const g = grpcs[0];
+        for (const h of get<HeaderEntry[]>(g, "grpcHeaders", [])) {
+          if (h?.name && h?.value)
+            srv.push(line(2, `grpc_set_header ${h.name} "${h.value}";`));
+        }
+        srv.push(line(2, `grpc_connect_timeout ${get(g, "connectTimeout")};`));
+        srv.push(line(2, `grpc_read_timeout ${get(g, "readTimeout")};`));
+        srv.push(line(2, `grpc_send_timeout ${get(g, "sendTimeout")};`));
+        const scheme = get<boolean>(g, "tls") ? "grpcs" : "grpc";
+        srv.push(line(2, `grpc_pass ${scheme}://${get(g, "address")}:${get(g, "port")};`));
+        srv.push(...extras(2, g));
+      } else if (backends.length) {
         const first = backends[0];
         for (const h of get<HeaderEntry[]>(first, "proxyHeaders", [])) {
           if (h?.name && h?.value)

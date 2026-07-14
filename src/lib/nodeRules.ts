@@ -3,14 +3,15 @@ import type { NodeType, WorkflowNode, Workflow } from "@/services/api";
 // Allowed connections: source type -> set of target types
 export const allowedTargets: Record<NodeType, NodeType[]> = {
   Listener: ["Domain"],
-  Domain: ["SSL", "Route", "Auth", "RateLimit", "Cache", "LB", "Backend"],
+  Domain: ["SSL", "Route", "Auth", "RateLimit", "Cache", "LB", "Backend", "GRPC"],
   SSL: [], // SSL is only a target of Domain
-  Route: ["Auth", "RateLimit", "Cache", "LB", "Backend"],
-  Auth: ["Route", "LB", "Backend"],
-  RateLimit: ["Route", "LB", "Backend"],
-  Cache: ["Route", "LB", "Backend"],
-  LB: ["Backend"],
+  Route: ["Auth", "RateLimit", "Cache", "LB", "Backend", "GRPC"],
+  Auth: ["Route", "LB", "Backend", "GRPC"],
+  RateLimit: ["Route", "LB", "Backend", "GRPC"],
+  Cache: ["Route", "LB", "Backend", "GRPC"],
+  LB: ["Backend", "GRPC"],
   Backend: [],
+  GRPC: [],
   TCP: ["Backend"],
   UDP: ["Backend"],
 };
@@ -42,6 +43,8 @@ export function computeLabel(node: WorkflowNode): string {
       return String(p.algorithm ?? "round-robin");
     case "Backend":
       return `${p.address ?? "backend"}:${p.port ?? ""}`;
+    case "GRPC":
+      return `${p.tls ? "grpcs" : "grpc"}://${p.address ?? ""}:${p.port ?? ""}`;
     case "Auth":
       return `Auth · ${p.type ?? "none"}`;
     case "RateLimit":
