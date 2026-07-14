@@ -1,9 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Trash2, AlertTriangle } from "lucide-react";
+import { Trash2, AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
 import type { WorkflowNode } from "@/services/api";
 import { nodeSchemas, validateNode } from "@/lib/nodeSchemas";
 import { FieldRenderer } from "./FieldRenderer";
@@ -81,6 +81,67 @@ export function PropertyPanel({ node, onChangeLabel, onChangeProps, onDelete }: 
           />
         ))}
       </div>
+
+      {node.type === "SSL" && Boolean(node.properties.leMode) && (
+        <LetsEncryptAction node={node} onChangeProps={onChangeProps} />
+      )}
+    </div>
+  );
+}
+
+function LetsEncryptAction({
+  node,
+  onChangeProps,
+}: {
+  node: WorkflowNode;
+  onChangeProps: (props: Record<string, unknown>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const status = String(node.properties.leStatus ?? "idle");
+  const error = String(node.properties.leError ?? "");
+  const domain = String(node.properties.leDomain ?? "").trim();
+
+  const run = async () => {
+    if (!domain) {
+      onChangeProps({ leStatus: "error", leError: "Set a certificate domain first." });
+      return;
+    }
+    setBusy(true);
+    onChangeProps({ leStatus: "pending", leError: "" });
+    await new Promise((r) => setTimeout(r, 1200));
+    // Simulated ACME issuance
+    const ok = /^([a-z0-9-]+\.)+[a-z]{2,}$/i.test(domain);
+    if (ok) {
+      onChangeProps({
+        leStatus: "issued",
+        leError: "",
+        certPath: `/etc/letsencrypt/live/${domain}/fullchain.pem`,
+        keyPath: `/etc/letsencrypt/live/${domain}/privkey.pem`,
+      });
+    } else {
+      onChangeProps({ leStatus: "error", leError: `Invalid domain "${domain}".` });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-muted/30 p-3">
+      <div className="flex items-center gap-2 text-xs font-medium">
+        <ShieldCheck className="h-3.5 w-3.5 text-primary" /> ACME issuance
+      </div>
+      <Button size="sm" className="h-8 w-full" onClick={run} disabled={busy}>
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+        {status === "issued" ? "Renew certificate" : "Generate certificate"}
+      </Button>
+      {status === "pending" && (
+        <p className="text-[11px] text-muted-foreground">Requesting certificate…</p>
+      )}
+      {status === "issued" && (
+        <p className="text-[11px] text-emerald-500">Certificate issued for {domain}.</p>
+      )}
+      {status === "error" && error && (
+        <p className="text-[11px] text-destructive">{error}</p>
+      )}
     </div>
   );
 }
