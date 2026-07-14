@@ -153,8 +153,24 @@ export function generateNginxConfig(workflow: Workflow): string {
     }
 
     if (ssl && get(listener, "protocol") === "https") {
-      srv.push(line(1, `ssl_certificate ${get(ssl, "certPath")};`));
-      srv.push(line(1, `ssl_certificate_key ${get(ssl, "keyPath")};`));
+      const isLe = Boolean(get<boolean>(ssl, "leMode"));
+      const leIssued = isLe && String(get<string>(ssl, "leStatus", "")) === "issued";
+      let certRef = "";
+      let keyRef = "";
+      if (leIssued) {
+        certRef = get<string>(ssl, "certPath", "") || "/etc/letsencrypt/live/<domain>/fullchain.pem";
+        keyRef = get<string>(ssl, "keyPath", "") || "/etc/letsencrypt/live/<domain>/privkey.pem";
+      } else if (isLe) {
+        certRef = "/etc/letsencrypt/live/<pending>/fullchain.pem";
+        keyRef = "/etc/letsencrypt/live/<pending>/privkey.pem";
+      } else {
+        // Manual: inline PEM stored by backend, resolved to a managed path at deploy time.
+        srv.push(line(1, `# TLS material provided inline; backend writes it to a managed path.`));
+        certRef = `/etc/nginx/managed/${ssl.id}/fullchain.pem`;
+        keyRef = `/etc/nginx/managed/${ssl.id}/privkey.pem`;
+      }
+      srv.push(line(1, `ssl_certificate ${certRef};`));
+      srv.push(line(1, `ssl_certificate_key ${keyRef};`));
       const protos = get<string[]>(ssl, "protocols", []);
       if (protos.length) srv.push(line(1, `ssl_protocols ${protos.join(" ")};`));
       const ciphers = get<string>(ssl, "ciphers", "");
