@@ -238,7 +238,19 @@ export function generateNginxConfig(workflow: Workflow): string {
         srv.push(...extras(2, r));
       }
 
-      if (backends.length) {
+      if (grpcs.length) {
+        const g = grpcs[0];
+        for (const h of get<HeaderEntry[]>(g, "grpcHeaders", [])) {
+          if (h?.name && h?.value)
+            srv.push(line(2, `grpc_set_header ${h.name} "${h.value}";`));
+        }
+        srv.push(line(2, `grpc_connect_timeout ${get(g, "connectTimeout")};`));
+        srv.push(line(2, `grpc_read_timeout ${get(g, "readTimeout")};`));
+        srv.push(line(2, `grpc_send_timeout ${get(g, "sendTimeout")};`));
+        const scheme = get<boolean>(g, "tls") ? "grpcs" : "grpc";
+        srv.push(line(2, `grpc_pass ${scheme}://${get(g, "address")}:${get(g, "port")};`));
+        srv.push(...extras(2, g));
+      } else if (backends.length) {
         const first = backends[0];
         for (const h of get<HeaderEntry[]>(first, "proxyHeaders", [])) {
           if (h?.name && h?.value)
