@@ -69,6 +69,7 @@ const nodeIcon: Record<NodeType, typeof Server> = {
   Cache: Layers,
   LB: Network,
   Backend: Database,
+  GRPC: Radio,
   TCP: Cable,
   UDP: Cable,
 };
@@ -76,7 +77,7 @@ const nodeIcon: Record<NodeType, typeof Server> = {
 const paletteGroups: { label: string; items: NodeType[] }[] = [
   { label: "Entry", items: ["Listener", "Domain", "SSL"] },
   { label: "Routing", items: ["Route", "Auth", "RateLimit", "Cache"] },
-  { label: "Upstream", items: ["LB", "Backend"] },
+  { label: "Upstream", items: ["LB", "Backend", "GRPC"] },
   { label: "L4 Stream", items: ["TCP", "UDP"] },
 ];
 
