@@ -178,18 +178,27 @@ function WorkflowEditor() {
   const onInputPointerUp = (e: RPointerEvent<HTMLDivElement>, n: WorkflowNode) => {
     if (!pending) return;
     e.stopPropagation();
+    const from = workflow?.nodes.find((x) => x.id === pending.fromId);
+    if (from && !canConnect(from.type, n.type)) {
+      setConnectError(`${from.type} → ${n.type} is not allowed.`);
+      setTimeout(() => setConnectError(null), 2500);
+      setPending(null);
+      return;
+    }
     dispatch(addEdge({ from: pending.fromId, to: n.id }));
     setPending(null);
   };
 
   // Pan
   const onViewportPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.button === 1 || e.shiftKey) {
+    const isBg = e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg;
+    if (e.button === 1 || e.shiftKey || (isBg && e.button === 0)) {
       panRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+      if (isBg) {
+        setSelectedNode(null);
+        setSelectedEdge(null);
+      }
       e.preventDefault();
-    } else if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg) {
-      setSelectedNode(null);
-      setSelectedEdge(null);
     }
   };
 
