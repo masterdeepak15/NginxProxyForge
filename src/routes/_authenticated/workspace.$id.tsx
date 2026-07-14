@@ -15,6 +15,7 @@ import {
   Database,
   Network,
   Cable,
+  Radio,
   Layers,
   AlertTriangle,
   FileCode,
