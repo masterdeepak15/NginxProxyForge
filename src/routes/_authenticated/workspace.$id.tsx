@@ -399,8 +399,13 @@ function WorkflowEditor() {
 
           {/* Hint */}
           <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-md bg-card/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-            Shift+drag to pan · Ctrl/⌘+wheel to zoom · Del to remove
+            Drag empty canvas to pan · Ctrl/⌘+wheel to zoom · Del to remove
           </div>
+          {connectError && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+              {connectError}
+            </div>
+          )}
 
           {/* World (pan/zoom transformed) */}
           <div
@@ -502,7 +507,10 @@ function WorkflowEditor() {
                         <AlertTriangle className="ml-auto h-3.5 w-3.5 text-destructive" />
                       )}
                     </div>
-                    <div className="mt-1 truncate text-sm font-medium">{n.label}</div>
+                    <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
+                    {n.type === "Domain" && domainIsHttps(workflow, n.id) && (
+                      <div className="mt-1 text-[10px] text-primary/80">↳ SSL connectable</div>
+                    )}
                   </div>
 
                   {/* Input handle */}
