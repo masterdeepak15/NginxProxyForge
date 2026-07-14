@@ -38,9 +38,11 @@ import {
 } from "@/store/slices/workflowsSlice";
 import type { NodeType, WorkflowNode } from "@/services/api";
 import { validateNode } from "@/lib/nodeSchemas";
+import { canConnect, computeLabel, domainIsHttps } from "@/lib/nodeRules";
 import { PropertyPanel } from "@/components/workspace/PropertyPanel";
 import { NginxPreviewDialog } from "@/components/workspace/NginxPreviewDialog";
 import { cn } from "@/lib/utils";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/workspace/$id")({
   head: ({ params }) => ({
@@ -94,6 +96,8 @@ function WorkflowEditor() {
   const [scale, setScale] = useState(1);
   const [pending, setPending] = useState<Pending | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
