@@ -575,6 +575,50 @@ const UDP: NodeSchema = {
   }),
 };
 
+const GRPC: NodeSchema = {
+  type: "GRPC",
+  description: "Upstream gRPC service. Emits `grpc_pass` in the matched location.",
+  nginxContext: "location { grpc_pass ... }",
+  fields: [
+    { key: "address", label: "Address", type: "text", placeholder: "grpc-service" },
+    { key: "port", label: "Port", type: "number", min: 1, max: 65535 },
+    { key: "tls", label: "TLS (grpcs://)", type: "switch" },
+    { key: "connectTimeout", label: "grpc_connect_timeout", type: "text", placeholder: "5s" },
+    { key: "readTimeout", label: "grpc_read_timeout", type: "text", placeholder: "60s" },
+    { key: "sendTimeout", label: "grpc_send_timeout", type: "text", placeholder: "60s" },
+    {
+      key: "grpcHeaders",
+      label: "grpc_set_header",
+      type: "headers",
+      help: "Headers forwarded to the gRPC upstream.",
+    },
+    ...commonFields,
+  ],
+  defaults: {
+    address: "grpc-service",
+    port: 50051,
+    tls: false,
+    connectTimeout: "5s",
+    readTimeout: "60s",
+    sendTimeout: "60s",
+    grpcHeaders: [
+      { name: "Host", value: "$host" },
+      { name: "X-Real-IP", value: "$remote_addr" },
+    ],
+    ...commonDefaults,
+  },
+  schema: z.object({
+    address: z.string().min(1),
+    port: z.coerce.number().int().min(1).max(65535),
+    tls: z.boolean(),
+    connectTimeout: z.string().min(1),
+    readTimeout: z.string().min(1),
+    sendTimeout: z.string().min(1),
+    grpcHeaders: z.array(headerEntry).default([]),
+    ...commonSchema,
+  }),
+};
+
 export const nodeSchemas: Record<NodeType, NodeSchema> = {
   Listener,
   Domain,
@@ -585,6 +629,7 @@ export const nodeSchemas: Record<NodeType, NodeSchema> = {
   Cache,
   LB,
   Backend,
+  GRPC,
   TCP,
   UDP,
 };
