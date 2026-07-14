@@ -38,9 +38,11 @@ import {
 } from "@/store/slices/workflowsSlice";
 import type { NodeType, WorkflowNode } from "@/services/api";
 import { validateNode } from "@/lib/nodeSchemas";
+import { canConnect, computeLabel, domainIsHttps } from "@/lib/nodeRules";
 import { PropertyPanel } from "@/components/workspace/PropertyPanel";
 import { NginxPreviewDialog } from "@/components/workspace/NginxPreviewDialog";
 import { cn } from "@/lib/utils";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/workspace/$id")({
   head: ({ params }) => ({
@@ -94,6 +96,8 @@ function WorkflowEditor() {
   const [scale, setScale] = useState(1);
   const [pending, setPending] = useState<Pending | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
@@ -174,18 +178,27 @@ function WorkflowEditor() {
   const onInputPointerUp = (e: RPointerEvent<HTMLDivElement>, n: WorkflowNode) => {
     if (!pending) return;
     e.stopPropagation();
+    const from = workflow?.nodes.find((x) => x.id === pending.fromId);
+    if (from && !canConnect(from.type, n.type)) {
+      setConnectError(`${from.type} → ${n.type} is not allowed.`);
+      setTimeout(() => setConnectError(null), 2500);
+      setPending(null);
+      return;
+    }
     dispatch(addEdge({ from: pending.fromId, to: n.id }));
     setPending(null);
   };
 
   // Pan
   const onViewportPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.button === 1 || e.shiftKey) {
+    const isBg = e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg;
+    if (e.button === 1 || e.shiftKey || (isBg && e.button === 0)) {
       panRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+      if (isBg) {
+        setSelectedNode(null);
+        setSelectedEdge(null);
+      }
       e.preventDefault();
-    } else if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.canvasBg) {
-      setSelectedNode(null);
-      setSelectedEdge(null);
     }
   };
 
@@ -294,11 +307,15 @@ function WorkflowEditor() {
           <Button size="sm" disabled={hasErrors}>
             <Play className="h-4 w-4" /> Deploy
           </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? "Hide properties" : "Show properties"}>
+            {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
 
       {/* 3-pane workspace */}
-      <div className="grid flex-1 grid-cols-[220px_1fr_320px] overflow-hidden">
+      <div className={cn("grid flex-1 overflow-hidden", panelOpen ? "grid-cols-[220px_1fr_320px]" : "grid-cols-[220px_1fr]")}>
+
         {/* Palette */}
         <aside className="overflow-y-auto border-r border-border/60 bg-card/30 p-3">
           <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
@@ -382,8 +399,13 @@ function WorkflowEditor() {
 
           {/* Hint */}
           <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-md bg-card/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-            Shift+drag to pan · Ctrl/⌘+wheel to zoom · Del to remove
+            Drag empty canvas to pan · Ctrl/⌘+wheel to zoom · Del to remove
           </div>
+          {connectError && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+              {connectError}
+            </div>
+          )}
 
           {/* World (pan/zoom transformed) */}
           <div
@@ -485,7 +507,10 @@ function WorkflowEditor() {
                         <AlertTriangle className="ml-auto h-3.5 w-3.5 text-destructive" />
                       )}
                     </div>
-                    <div className="mt-1 truncate text-sm font-medium">{n.label}</div>
+                    <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
+                    {n.type === "Domain" && domainIsHttps(workflow, n.id) && (
+                      <div className="mt-1 text-[10px] text-primary/80">↳ SSL connectable</div>
+                    )}
                   </div>
 
                   {/* Input handle */}
