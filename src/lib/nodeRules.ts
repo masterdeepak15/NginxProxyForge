@@ -43,6 +43,8 @@ export function computeLabel(node: WorkflowNode): string {
       return String(p.algorithm ?? "round-robin");
     case "Backend":
       return `${p.address ?? "backend"}:${p.port ?? ""}`;
+    case "GRPC":
+      return `${p.tls ? "grpcs" : "grpc"}://${p.address ?? ""}:${p.port ?? ""}`;
     case "Auth":
       return `Auth · ${p.type ?? "none"}`;
     case "RateLimit":
