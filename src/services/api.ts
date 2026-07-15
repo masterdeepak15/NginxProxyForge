@@ -188,9 +188,9 @@ const workflows: Workflow[] = [
     domains: ["ws.example.com"],
     nodes: [
       { id: "n1", type: "Listener", label: "HTTPS :443", x: 60, y: 80, properties: {} },
-      { id: "n2", type: "Domain", label: "ws.example.com", x: 260, y: 80, properties: {} },
-      { id: "n3", type: "Route", label: "/socket", x: 460, y: 80, properties: {} },
-      { id: "n4", type: "Backend", label: "realtime:6001", x: 660, y: 80, properties: {} },
+      { id: "n2", type: "Domain", label: "ws.example.com", x: 260, y: 80, properties: { hostnames: ["ws.example.com"] } },
+      { id: "n3", type: "Route", label: "/socket", x: 460, y: 80, properties: { path: "/socket" } },
+      { id: "n4", type: "Backend", label: "realtime:6001", x: 660, y: 80, properties: { address: "realtime", port: 6001 } },
     ],
     edges: [
       { id: "e1", from: "n1", to: "n2" },
@@ -198,7 +198,44 @@ const workflows: Workflow[] = [
       { id: "e3", from: "n3", to: "n4" },
     ],
   },
+  {
+    id: "wf_grpc",
+    name: "gRPC Payments API",
+    description: "HTTPS/2 gRPC edge fronting payment microservice.",
+    status: "deployed",
+    version: 4,
+    updatedAt: "2026-07-11T10:15:00Z",
+    domains: ["grpc.example.com"],
+    nodes: [
+      { id: "n1", type: "Listener", label: "HTTPS :443", x: 60, y: 80, properties: { port: 443, protocol: "https", http2: true } },
+      { id: "n2", type: "Domain", label: "grpc.example.com", x: 260, y: 80, properties: { hostnames: ["grpc.example.com"] } },
+      { id: "n3", type: "SSL", label: "Let's Encrypt", x: 260, y: 260, properties: { leMode: true, leDomain: "grpc.example.com" } },
+      { id: "n4", type: "Auth", label: "JWT", x: 460, y: 80, properties: { type: "jwt" } },
+      { id: "n5", type: "GRPC", label: "grpcs://payments:50051", x: 680, y: 80, properties: { address: "payments", port: 50051, tls: true } },
+    ],
+    edges: [
+      { id: "e1", from: "n1", to: "n2" },
+      { id: "e2", from: "n2", to: "n3" },
+      { id: "e3", from: "n2", to: "n4" },
+      { id: "e4", from: "n4", to: "n5" },
+    ],
+  },
+  {
+    id: "wf_dns_udp",
+    name: "DNS UDP Proxy",
+    description: "L4 UDP stream proxy fronting an internal DNS resolver pool.",
+    status: "deployed",
+    version: 1,
+    updatedAt: "2026-07-11T12:00:00Z",
+    domains: ["dns.internal.example.com"],
+    nodes: [
+      { id: "n1", type: "UDP", label: "UDP :53", x: 60, y: 80, properties: { port: 53, proxyResponses: 1 } },
+      { id: "n2", type: "Backend", label: "resolver:53", x: 320, y: 80, properties: { address: "resolver", port: 53 } },
+    ],
+    edges: [{ id: "e1", from: "n1", to: "n2" }],
+  },
 ];
+
 
 const deployments: Deployment[] = [
   { id: "d_1", workflowId: "wf_edge_api", workflowName: "Public API Edge", version: 7, status: "success", author: "Alex Morgan", timestamp: "2026-07-10T14:22:00Z", durationMs: 3200 },
