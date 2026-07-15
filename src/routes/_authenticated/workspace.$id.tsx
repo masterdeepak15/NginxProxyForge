@@ -243,7 +243,7 @@ function WorkflowEditor() {
     const type = e.dataTransfer.getData("application/x-node") as NodeType;
     if (!type) return;
     const world = toWorld(e.clientX, e.clientY);
-    dispatch(addNode({ type, x: Math.round(world.x - NODE_W / 2), y: Math.round(world.y - NODE_H / 2) }));
+    dispatch(addNode({ type, x: Math.round(world.x - NODE_W / 2), y: Math.round(world.y - NODE_H_BASE / 2) }));
   };
 
   // Keyboard delete
