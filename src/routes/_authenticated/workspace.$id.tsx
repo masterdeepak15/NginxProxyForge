@@ -448,9 +448,9 @@ function WorkflowEditor() {
                 const to = workflow.nodes.find((n) => n.id === e.to);
                 if (!from || !to) return null;
                 const x1 = from.x + NODE_W;
-                const y1 = from.y + NODE_H / 2;
+                const y1 = from.y + nodeHeight(from) / 2;
                 const x2 = to.x;
-                const y2 = to.y + NODE_H / 2;
+                const y2 = to.y + nodeHeight(to) / 2;
                 const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
                 const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
                 const active = selectedEdge === e.id;
@@ -477,7 +477,7 @@ function WorkflowEditor() {
                   const from = workflow.nodes.find((n) => n.id === pending.fromId);
                   if (!from) return null;
                   const x1 = from.x + NODE_W;
-                  const y1 = from.y + NODE_H / 2;
+                  const y1 = from.y + nodeHeight(from) / 2;
                   const dx = Math.max(40, Math.abs(pending.x - x1) * 0.5);
                   const d = `M${x1},${y1} C${x1 + dx},${y1} ${pending.x - dx},${pending.y} ${pending.x},${pending.y}`;
                   return (
@@ -496,17 +496,37 @@ function WorkflowEditor() {
               const Icon = nodeIcon[n.type];
               const active = selectedNode === n.id;
               const invalid = nodeErrors[n.id];
+              const h = nodeHeight(n);
+              const orphan = !workflow.edges.some((e) => e.from === n.id || e.to === n.id);
+              // Suggestion: is this node a valid target for the currently pending or selected source?
+              const sourceForSuggestion = pending
+                ? workflow.nodes.find((x) => x.id === pending.fromId)
+                : selectedNode
+                  ? workflow.nodes.find((x) => x.id === selectedNode)
+                  : null;
+              const suggested =
+                sourceForSuggestion &&
+                sourceForSuggestion.id !== n.id &&
+                canConnect(sourceForSuggestion.type, n.type) &&
+                !workflow.edges.some((e) => e.from === sourceForSuggestion.id && e.to === n.id);
+              const hosts = n.type === "Domain" ? domainHosts(n) : [];
+              const httpsBehind = n.type === "Domain" && domainIsHttps(workflow, n.id);
+
               return (
                 <div
                   key={n.id}
-                  style={{ left: n.x, top: n.y, width: NODE_W }}
+                  style={{ left: n.x, top: n.y, width: NODE_W, height: h }}
                   className={cn(
                     "absolute select-none rounded-lg border bg-card shadow-sm transition-shadow",
                     active
                       ? "border-primary ring-2 ring-primary/30"
                       : invalid
                         ? "border-destructive/60"
-                        : "border-border/60 hover:border-primary/50",
+                        : suggested
+                          ? "border-emerald-500/80 ring-2 ring-emerald-500/30 border-dashed"
+                          : orphan
+                            ? "border-destructive border-dashed"
+                            : "border-border/60 hover:border-primary/50",
                   )}
                   onPointerDown={(e) => onNodePointerDown(e, n)}
                   onPointerMove={onNodePointerMove}
@@ -523,10 +543,29 @@ function WorkflowEditor() {
                       {invalid && (
                         <AlertTriangle className="ml-auto h-3.5 w-3.5 text-destructive" />
                       )}
+                      {!invalid && orphan && (
+                        <span className="ml-auto text-[9px] uppercase tracking-wider text-destructive">
+                          unused
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
-                    {n.type === "Domain" && domainIsHttps(workflow, n.id) && (
-                      <div className="mt-1 text-[10px] text-primary/80">↳ SSL connectable</div>
+                    {n.type === "Domain" && hosts.length > 0 ? (
+                      <div className="mt-1 space-y-0.5">
+                        {hosts.map((host, i) => (
+                          <div
+                            key={`${host}-${i}`}
+                            className="relative flex items-center gap-1 truncate text-xs"
+                            style={{ height: HOST_ROW_H }}
+                          >
+                            <span className="truncate font-medium">{host}</span>
+                            {httpsBehind && (
+                              <span className="ml-auto text-[9px] text-primary/80">SSL</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
                     )}
                   </div>
 
@@ -536,28 +575,55 @@ function WorkflowEditor() {
                     onPointerUp={(e) => onInputPointerUp(e, n)}
                     style={{
                       left: -HANDLE_R,
-                      top: NODE_H / 2 - HANDLE_R,
+                      top: h / 2 - HANDLE_R,
                       width: HANDLE_R * 2,
                       height: HANDLE_R * 2,
                     }}
-                    className="absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary"
+                    className={cn(
+                      "absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary",
+                      suggested && "ring-2 ring-emerald-500/60 animate-pulse",
+                    )}
                   />
 
-                  {/* Output handle */}
-                  <div
-                    data-handle="out"
-                    onPointerDown={(e) => onOutputPointerDown(e, n)}
-                    style={{
-                      left: NODE_W - HANDLE_R,
-                      top: NODE_H / 2 - HANDLE_R,
-                      width: HANDLE_R * 2,
-                      height: HANDLE_R * 2,
-                    }}
-                    className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
-                  />
+                  {/* Per-hostname SSL handles (front of node) for HTTPS domains with >1 hostname */}
+                  {n.type === "Domain" && httpsBehind && hosts.length > 1 &&
+                    hosts.map((_, i) => {
+                      const rowY = NODE_H_BASE + i * HOST_ROW_H - HOST_ROW_H / 2;
+                      return (
+                        <div
+                          key={`sslin-${i}`}
+                          data-handle="in-ssl"
+                          onPointerUp={(e) => onInputPointerUp(e, n)}
+                          style={{
+                            left: -HANDLE_R,
+                            top: rowY - HANDLE_R,
+                            width: HANDLE_R * 2,
+                            height: HANDLE_R * 2,
+                          }}
+                          className="absolute z-10 rounded-full border-2 border-primary/60 bg-background hover:scale-125 hover:bg-primary"
+                          title={`SSL connector for ${hosts[i]}`}
+                        />
+                      );
+                    })}
+
+                  {/* Output handle (Backend/GRPC have no output; hide) */}
+                  {n.type !== "Backend" && n.type !== "GRPC" && n.type !== "SSL" && (
+                    <div
+                      data-handle="out"
+                      onPointerDown={(e) => onOutputPointerDown(e, n)}
+                      style={{
+                        left: NODE_W - HANDLE_R,
+                        top: h / 2 - HANDLE_R,
+                        width: HANDLE_R * 2,
+                        height: HANDLE_R * 2,
+                      }}
+                      className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
+                    />
+                  )}
                 </div>
               );
             })}
+
           </div>
         </div>
 
