@@ -627,25 +627,41 @@ function WorkflowEditor() {
           </div>
         </div>
 
-        {/* Property panel */}
-        <aside className="overflow-y-auto border-l border-border/60 bg-card/30 p-4">
+        {/* Slide-in Property drawer (absolute, overlays canvas — doesn't shrink it) */}
+        <aside
+          className={cn(
+            "absolute right-0 top-0 bottom-0 z-20 w-[340px] overflow-y-auto border-l border-border/60 bg-card/95 backdrop-blur p-4 shadow-xl transition-transform duration-200",
+            panelOpen ? "translate-x-0" : "translate-x-full",
+          )}
+        >
           <div className="mb-3 flex items-center justify-between">
             <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
               Properties
             </div>
-            {selectedEdge && (
+            <div className="flex items-center gap-1">
+              {selectedEdge && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-destructive"
+                  onClick={() => {
+                    dispatch(deleteEdge(selectedEdge));
+                    setSelectedEdge(null);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Remove edge
+                </Button>
+              )}
               <Button
-                size="sm"
+                size="icon"
                 variant="ghost"
-                className="h-7 text-xs text-destructive"
-                onClick={() => {
-                  dispatch(deleteEdge(selectedEdge));
-                  setSelectedEdge(null);
-                }}
+                className="h-7 w-7"
+                onClick={() => setPanelOpen(false)}
+                title="Hide properties"
               >
-                <Trash2 className="h-3.5 w-3.5" /> Remove edge
+                <PanelRightClose className="h-4 w-4" />
               </Button>
-            )}
+            </div>
           </div>
           <PropertyPanel
             node={selected}
@@ -663,6 +679,7 @@ function WorkflowEditor() {
           />
         </aside>
       </div>
+
 
       <NginxPreviewDialog
         workflow={workflow}
