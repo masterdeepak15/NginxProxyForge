@@ -55,9 +55,24 @@ export const Route = createFileRoute("/_authenticated/workspace/$id")({
   component: WorkflowEditor,
 });
 
-const NODE_W = 176;
-const NODE_H = 64;
+const NODE_W = 200;
+const NODE_H_BASE = 64;
+const HOST_ROW_H = 22;
 const HANDLE_R = 6;
+
+function domainHosts(n: WorkflowNode): string[] {
+  const hosts = (n.properties.hostnames as string[] | undefined) ?? [];
+  return hosts.length ? hosts : [];
+}
+
+function nodeHeight(n: WorkflowNode): number {
+  if (n.type === "Domain") {
+    const rows = Math.max(1, domainHosts(n).length);
+    return NODE_H_BASE + (rows > 1 ? (rows - 1) * HOST_ROW_H : 0);
+  }
+  return NODE_H_BASE;
+}
+
 
 const nodeIcon: Record<NodeType, typeof Server> = {
   Listener: Server,
@@ -228,7 +243,7 @@ function WorkflowEditor() {
     const type = e.dataTransfer.getData("application/x-node") as NodeType;
     if (!type) return;
     const world = toWorld(e.clientX, e.clientY);
-    dispatch(addNode({ type, x: Math.round(world.x - NODE_W / 2), y: Math.round(world.y - NODE_H / 2) }));
+    dispatch(addNode({ type, x: Math.round(world.x - NODE_W / 2), y: Math.round(world.y - NODE_H_BASE / 2) }));
   };
 
   // Keyboard delete
@@ -315,8 +330,8 @@ function WorkflowEditor() {
         </div>
       </div>
 
-      {/* 3-pane workspace */}
-      <div className={cn("grid flex-1 overflow-hidden", panelOpen ? "grid-cols-[220px_1fr_320px]" : "grid-cols-[220px_1fr]")}>
+      {/* Workspace: palette + full-width canvas + slide-in property drawer */}
+      <div className="relative grid flex-1 overflow-hidden grid-cols-[220px_1fr]">
 
         {/* Palette */}
         <aside className="overflow-y-auto border-r border-border/60 bg-card/30 p-3">
@@ -433,9 +448,9 @@ function WorkflowEditor() {
                 const to = workflow.nodes.find((n) => n.id === e.to);
                 if (!from || !to) return null;
                 const x1 = from.x + NODE_W;
-                const y1 = from.y + NODE_H / 2;
+                const y1 = from.y + nodeHeight(from) / 2;
                 const x2 = to.x;
-                const y2 = to.y + NODE_H / 2;
+                const y2 = to.y + nodeHeight(to) / 2;
                 const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
                 const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
                 const active = selectedEdge === e.id;
@@ -462,7 +477,7 @@ function WorkflowEditor() {
                   const from = workflow.nodes.find((n) => n.id === pending.fromId);
                   if (!from) return null;
                   const x1 = from.x + NODE_W;
-                  const y1 = from.y + NODE_H / 2;
+                  const y1 = from.y + nodeHeight(from) / 2;
                   const dx = Math.max(40, Math.abs(pending.x - x1) * 0.5);
                   const d = `M${x1},${y1} C${x1 + dx},${y1} ${pending.x - dx},${pending.y} ${pending.x},${pending.y}`;
                   return (
@@ -481,17 +496,37 @@ function WorkflowEditor() {
               const Icon = nodeIcon[n.type];
               const active = selectedNode === n.id;
               const invalid = nodeErrors[n.id];
+              const h = nodeHeight(n);
+              const orphan = !workflow.edges.some((e) => e.from === n.id || e.to === n.id);
+              // Suggestion: is this node a valid target for the currently pending or selected source?
+              const sourceForSuggestion = pending
+                ? workflow.nodes.find((x) => x.id === pending.fromId)
+                : selectedNode
+                  ? workflow.nodes.find((x) => x.id === selectedNode)
+                  : null;
+              const suggested =
+                sourceForSuggestion &&
+                sourceForSuggestion.id !== n.id &&
+                canConnect(sourceForSuggestion.type, n.type) &&
+                !workflow.edges.some((e) => e.from === sourceForSuggestion.id && e.to === n.id);
+              const hosts = n.type === "Domain" ? domainHosts(n) : [];
+              const httpsBehind = n.type === "Domain" && domainIsHttps(workflow, n.id);
+
               return (
                 <div
                   key={n.id}
-                  style={{ left: n.x, top: n.y, width: NODE_W }}
+                  style={{ left: n.x, top: n.y, width: NODE_W, height: h }}
                   className={cn(
                     "absolute select-none rounded-lg border bg-card shadow-sm transition-shadow",
                     active
                       ? "border-primary ring-2 ring-primary/30"
                       : invalid
                         ? "border-destructive/60"
-                        : "border-border/60 hover:border-primary/50",
+                        : suggested
+                          ? "border-emerald-500/80 ring-2 ring-emerald-500/30 border-dashed"
+                          : orphan
+                            ? "border-destructive border-dashed"
+                            : "border-border/60 hover:border-primary/50",
                   )}
                   onPointerDown={(e) => onNodePointerDown(e, n)}
                   onPointerMove={onNodePointerMove}
@@ -508,10 +543,29 @@ function WorkflowEditor() {
                       {invalid && (
                         <AlertTriangle className="ml-auto h-3.5 w-3.5 text-destructive" />
                       )}
+                      {!invalid && orphan && (
+                        <span className="ml-auto text-[9px] uppercase tracking-wider text-destructive">
+                          unused
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
-                    {n.type === "Domain" && domainIsHttps(workflow, n.id) && (
-                      <div className="mt-1 text-[10px] text-primary/80">↳ SSL connectable</div>
+                    {n.type === "Domain" && hosts.length > 0 ? (
+                      <div className="mt-1 space-y-0.5">
+                        {hosts.map((host, i) => (
+                          <div
+                            key={`${host}-${i}`}
+                            className="relative flex items-center gap-1 truncate text-xs"
+                            style={{ height: HOST_ROW_H }}
+                          >
+                            <span className="truncate font-medium">{host}</span>
+                            {httpsBehind && (
+                              <span className="ml-auto text-[9px] text-primary/80">SSL</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
                     )}
                   </div>
 
@@ -521,50 +575,93 @@ function WorkflowEditor() {
                     onPointerUp={(e) => onInputPointerUp(e, n)}
                     style={{
                       left: -HANDLE_R,
-                      top: NODE_H / 2 - HANDLE_R,
+                      top: h / 2 - HANDLE_R,
                       width: HANDLE_R * 2,
                       height: HANDLE_R * 2,
                     }}
-                    className="absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary"
+                    className={cn(
+                      "absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary",
+                      suggested && "ring-2 ring-emerald-500/60 animate-pulse",
+                    )}
                   />
 
-                  {/* Output handle */}
-                  <div
-                    data-handle="out"
-                    onPointerDown={(e) => onOutputPointerDown(e, n)}
-                    style={{
-                      left: NODE_W - HANDLE_R,
-                      top: NODE_H / 2 - HANDLE_R,
-                      width: HANDLE_R * 2,
-                      height: HANDLE_R * 2,
-                    }}
-                    className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
-                  />
+                  {/* Per-hostname SSL handles (front of node) for HTTPS domains with >1 hostname */}
+                  {n.type === "Domain" && httpsBehind && hosts.length > 1 &&
+                    hosts.map((_, i) => {
+                      const rowY = NODE_H_BASE + i * HOST_ROW_H - HOST_ROW_H / 2;
+                      return (
+                        <div
+                          key={`sslin-${i}`}
+                          data-handle="in-ssl"
+                          onPointerUp={(e) => onInputPointerUp(e, n)}
+                          style={{
+                            left: -HANDLE_R,
+                            top: rowY - HANDLE_R,
+                            width: HANDLE_R * 2,
+                            height: HANDLE_R * 2,
+                          }}
+                          className="absolute z-10 rounded-full border-2 border-primary/60 bg-background hover:scale-125 hover:bg-primary"
+                          title={`SSL connector for ${hosts[i]}`}
+                        />
+                      );
+                    })}
+
+                  {/* Output handle (Backend/GRPC have no output; hide) */}
+                  {n.type !== "Backend" && n.type !== "GRPC" && n.type !== "SSL" && (
+                    <div
+                      data-handle="out"
+                      onPointerDown={(e) => onOutputPointerDown(e, n)}
+                      style={{
+                        left: NODE_W - HANDLE_R,
+                        top: h / 2 - HANDLE_R,
+                        width: HANDLE_R * 2,
+                        height: HANDLE_R * 2,
+                      }}
+                      className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
+                    />
+                  )}
                 </div>
               );
             })}
+
           </div>
         </div>
 
-        {/* Property panel */}
-        <aside className="overflow-y-auto border-l border-border/60 bg-card/30 p-4">
+        {/* Slide-in Property drawer (absolute, overlays canvas — doesn't shrink it) */}
+        <aside
+          className={cn(
+            "absolute right-0 top-0 bottom-0 z-20 w-[340px] overflow-y-auto border-l border-border/60 bg-card/95 backdrop-blur p-4 shadow-xl transition-transform duration-200",
+            panelOpen ? "translate-x-0" : "translate-x-full",
+          )}
+        >
           <div className="mb-3 flex items-center justify-between">
             <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
               Properties
             </div>
-            {selectedEdge && (
+            <div className="flex items-center gap-1">
+              {selectedEdge && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-destructive"
+                  onClick={() => {
+                    dispatch(deleteEdge(selectedEdge));
+                    setSelectedEdge(null);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Remove edge
+                </Button>
+              )}
               <Button
-                size="sm"
+                size="icon"
                 variant="ghost"
-                className="h-7 text-xs text-destructive"
-                onClick={() => {
-                  dispatch(deleteEdge(selectedEdge));
-                  setSelectedEdge(null);
-                }}
+                className="h-7 w-7"
+                onClick={() => setPanelOpen(false)}
+                title="Hide properties"
               >
-                <Trash2 className="h-3.5 w-3.5" /> Remove edge
+                <PanelRightClose className="h-4 w-4" />
               </Button>
-            )}
+            </div>
           </div>
           <PropertyPanel
             node={selected}
@@ -582,6 +679,7 @@ function WorkflowEditor() {
           />
         </aside>
       </div>
+
 
       <NginxPreviewDialog
         workflow={workflow}
