@@ -330,8 +330,8 @@ function WorkflowEditor() {
         </div>
       </div>
 
-      {/* 3-pane workspace */}
-      <div className={cn("grid flex-1 overflow-hidden", panelOpen ? "grid-cols-[220px_1fr_320px]" : "grid-cols-[220px_1fr]")}>
+      {/* Workspace: palette + full-width canvas + slide-in property drawer */}
+      <div className="relative grid flex-1 overflow-hidden grid-cols-[220px_1fr]">
 
         {/* Palette */}
         <aside className="overflow-y-auto border-r border-border/60 bg-card/30 p-3">
