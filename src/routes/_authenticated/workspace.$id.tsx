@@ -55,9 +55,24 @@ export const Route = createFileRoute("/_authenticated/workspace/$id")({
   component: WorkflowEditor,
 });
 
-const NODE_W = 176;
-const NODE_H = 64;
+const NODE_W = 200;
+const NODE_H_BASE = 64;
+const HOST_ROW_H = 22;
 const HANDLE_R = 6;
+
+function domainHosts(n: WorkflowNode): string[] {
+  const hosts = (n.properties.hostnames as string[] | undefined) ?? [];
+  return hosts.length ? hosts : [];
+}
+
+function nodeHeight(n: WorkflowNode): number {
+  if (n.type === "Domain") {
+    const rows = Math.max(1, domainHosts(n).length);
+    return NODE_H_BASE + (rows > 1 ? (rows - 1) * HOST_ROW_H : 0);
+  }
+  return NODE_H_BASE;
+}
+
 
 const nodeIcon: Record<NodeType, typeof Server> = {
   Listener: Server,
