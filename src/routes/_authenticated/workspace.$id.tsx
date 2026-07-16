@@ -550,10 +550,27 @@ function WorkflowEditor() {
                 const from = workflow.nodes.find((n) => n.id === e.from);
                 const to = workflow.nodes.find((n) => n.id === e.to);
                 if (!from || !to) return null;
+                // Source Y: for Domain→SSL edges, exit from the specific
+                // hostname row that matches the SSL's leDomain. Otherwise
+                // exit from the Domain's header row. Non-Domain sources use
+                // vertical middle.
+                let y1: number;
+                if (from.type === "Domain") {
+                  if (to.type === "SSL") {
+                    y1 = from.y + domainHostRowY(domainSslRowIndex(from, to));
+                  } else {
+                    y1 = from.y + DOMAIN_HEADER_H / 2;
+                  }
+                } else {
+                  y1 = from.y + nodeHeight(from) / 2;
+                }
                 const x1 = from.x + NODE_W;
-                const y1 = from.y + nodeHeight(from) / 2;
+                // Target Y: Domain inputs come in at the header row.
+                const y2 =
+                  to.type === "Domain"
+                    ? to.y + domainInputY()
+                    : to.y + nodeHeight(to) / 2;
                 const x2 = to.x;
-                const y2 = to.y + nodeHeight(to) / 2;
                 const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
                 const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
                 const active = selectedEdge === e.id;
@@ -580,7 +597,7 @@ function WorkflowEditor() {
                   const from = workflow.nodes.find((n) => n.id === pending.fromId);
                   if (!from) return null;
                   const x1 = from.x + NODE_W;
-                  const y1 = from.y + nodeHeight(from) / 2;
+                  const y1 = pending.sourceY ?? from.y + nodeHeight(from) / 2;
                   const dx = Math.max(40, Math.abs(pending.x - x1) * 0.5);
                   const d = `M${x1},${y1} C${x1 + dx},${y1} ${pending.x - dx},${pending.y} ${pending.x},${pending.y}`;
                   return (
