@@ -321,6 +321,29 @@ function WorkflowEditor() {
     return () => window.removeEventListener("keydown", handler);
   }, [dispatch, selectedNode, selectedEdge]);
 
+  // Live per-node request stats. Polls the API on interval when enabled and
+  // whenever the range or node set changes. Cleans up on unmount / disable.
+  useEffect(() => {
+    if (!workflow || !showStats) return;
+    let cancelled = false;
+    const load = async () => {
+      const entries = await Promise.all(
+        workflow.nodes.map(async (n) => {
+          const s = await apiService.getNodeStats(n.id, statsRange);
+          return [n.id, s.count] as const;
+        }),
+      );
+      if (cancelled) return;
+      setNodeStats(Object.fromEntries(entries));
+    };
+    load();
+    const t = window.setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [workflow, showStats, statsRange]);
+
   const nodeErrors = useMemo(() => {
     const map: Record<string, boolean> = {};
     if (!workflow) return map;
