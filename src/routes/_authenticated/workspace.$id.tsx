@@ -652,7 +652,7 @@ function WorkflowEditor() {
                   onPointerMove={onNodePointerMove}
                   onPointerUp={onNodePointerUp}
                 >
-                  <div className="cursor-grab p-3 active:cursor-grabbing">
+                  <div className="cursor-grab p-3 pb-1 active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                       <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-primary">
                         <Icon className="h-3.5 w-3.5" />
@@ -670,74 +670,105 @@ function WorkflowEditor() {
                       )}
                     </div>
                     {n.type === "Domain" && hosts.length > 0 ? (
-                      <div className="mt-1 space-y-0.5">
-                        {hosts.map((host, i) => (
-                          <div
-                            key={`${host}-${i}`}
-                            className="relative flex items-center gap-1 truncate text-xs"
-                            style={{ height: HOST_ROW_H }}
-                          >
-                            <span className="truncate font-medium">{host}</span>
-                            {httpsBehind && (
-                              <span className="ml-auto text-[9px] text-primary/80">SSL</span>
-                            )}
-                          </div>
-                        ))}
+                      <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                        {hosts.length} host{hosts.length > 1 ? "s" : ""}
                       </div>
                     ) : (
                       <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
                     )}
                   </div>
 
-                  {/* Input handle */}
-                  <div
-                    data-handle="in"
-                    onPointerUp={(e) => onInputPointerUp(e, n)}
-                    style={{
-                      left: -HANDLE_R,
-                      top: h / 2 - HANDLE_R,
-                      width: HANDLE_R * 2,
-                      height: HANDLE_R * 2,
-                    }}
-                    className={cn(
-                      "absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary",
-                      suggested && "ring-2 ring-emerald-500/60 animate-pulse",
-                    )}
-                  />
+                  {/* Domain: per-hostname rows with dedicated SSL output handle on the right of each row */}
+                  {n.type === "Domain" && hosts.length > 0 && (
+                    <div className="px-3 pb-2">
+                      {hosts.map((host, i) => (
+                        <div
+                          key={`${host}-${i}`}
+                          className="relative flex items-center gap-1 text-xs"
+                          style={{ height: HOST_ROW_H }}
+                        >
+                          <span className="truncate font-medium">{host}</span>
+                          {httpsBehind && (
+                            <span className="ml-auto pr-2 text-[9px] uppercase tracking-wider text-primary/80">
+                              SSL
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                  {/* Per-hostname SSL handles (front of node) for HTTPS domains with >1 hostname */}
-                  {n.type === "Domain" && httpsBehind && hosts.length > 1 &&
-                    hosts.map((_, i) => {
-                      const rowY = NODE_H_BASE + i * HOST_ROW_H - HOST_ROW_H / 2;
+                  {/* Live request count badge (corner) */}
+                  {showStats && (
+                    <div
+                      className="absolute -right-2 -top-2 z-20 rounded-full border border-primary/40 bg-background px-1.5 py-0.5 text-[10px] font-mono text-primary shadow"
+                      title={`Requests ${STATS_RANGES.find((r) => r.value === statsRange)?.label ?? statsRange}`}
+                    >
+                      {formatCount(nodeStats[n.id] ?? 0)}
+                    </div>
+                  )}
+
+                  {/* Input handle — Domain uses the header row Y so it doesn't collide with per-host outputs. Listener has no input. */}
+                  {n.type !== "Listener" && n.type !== "TCP" && n.type !== "UDP" && (
+                    <div
+                      data-handle="in"
+                      onPointerUp={(e) => onInputPointerUp(e, n)}
+                      style={{
+                        left: -HANDLE_R,
+                        top:
+                          (n.type === "Domain" ? domainInputY() : h / 2) - HANDLE_R,
+                        width: HANDLE_R * 2,
+                        height: HANDLE_R * 2,
+                      }}
+                      className={cn(
+                        "absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary",
+                        suggested && "ring-2 ring-emerald-500/60 animate-pulse",
+                      )}
+                    />
+                  )}
+
+                  {/* Per-hostname SSL OUTPUT handles on the right of each host row (only when the domain sits behind an HTTPS listener). Dragging from here starts a Domain→SSL connection at the correct row. */}
+                  {n.type === "Domain" && httpsBehind &&
+                    hosts.map((host, i) => {
+                      const rowY = domainHostRowY(i);
                       return (
                         <div
-                          key={`sslin-${i}`}
-                          data-handle="in-ssl"
-                          onPointerUp={(e) => onInputPointerUp(e, n)}
+                          key={`sslout-${i}`}
+                          data-handle="out-ssl"
+                          onPointerDown={(e) => onOutputPointerDown(e, n, n.y + rowY)}
                           style={{
-                            left: -HANDLE_R,
+                            left: NODE_W - HANDLE_R,
                             top: rowY - HANDLE_R,
                             width: HANDLE_R * 2,
                             height: HANDLE_R * 2,
                           }}
-                          className="absolute z-10 rounded-full border-2 border-primary/60 bg-background hover:scale-125 hover:bg-primary"
-                          title={`SSL connector for ${hosts[i]}`}
+                          className="absolute z-10 cursor-crosshair rounded-full border-2 border-emerald-500 bg-emerald-500/80 hover:scale-125"
+                          title={`Connect SSL for ${host}`}
                         />
                       );
                     })}
 
-                  {/* Output handle (Backend/GRPC have no output; hide) */}
+                  {/* Main output handle — Domain output for non-SSL targets exits from the header row; other node types use vertical middle. Backend/GRPC/SSL are terminal (no output). */}
                   {n.type !== "Backend" && n.type !== "GRPC" && n.type !== "SSL" && (
                     <div
                       data-handle="out"
-                      onPointerDown={(e) => onOutputPointerDown(e, n)}
+                      onPointerDown={(e) =>
+                        onOutputPointerDown(
+                          e,
+                          n,
+                          n.type === "Domain" ? n.y + DOMAIN_HEADER_H / 2 : undefined,
+                        )
+                      }
                       style={{
                         left: NODE_W - HANDLE_R,
-                        top: h / 2 - HANDLE_R,
+                        top:
+                          (n.type === "Domain" ? DOMAIN_HEADER_H / 2 : h / 2) -
+                          HANDLE_R,
                         width: HANDLE_R * 2,
                         height: HANDLE_R * 2,
                       }}
                       className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
+                      title={n.type === "Domain" ? "Connect to next node (Route/Auth/LB/…)" : "Connect to next node"}
                     />
                   )}
                 </div>
