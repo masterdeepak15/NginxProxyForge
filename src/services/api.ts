@@ -103,22 +103,24 @@ const workflows: Workflow[] = [
   {
     id: "wf_edge_api",
     name: "Public API Edge",
-    description: "Main HTTPS edge for api.example.com with rate limits and JWT auth.",
+    description: "Main HTTPS edge for api.example.com and www.example.com with per-host TLS, rate limits, and JWT auth.",
     status: "deployed",
     version: 7,
     updatedAt: "2026-07-10T14:22:00Z",
-    domains: ["api.example.com"],
+    domains: ["api.example.com", "www.example.com"],
     nodes: [
       { id: "n1", type: "Listener", label: "HTTPS :443", x: 60, y: 80, properties: { port: 443, protocol: "https" } },
-      { id: "n2", type: "Domain", label: "api.example.com", x: 260, y: 80, properties: { hostname: "api.example.com" } },
-      { id: "n3", type: "SSL", label: "Let's Encrypt", x: 260, y: 220, properties: { provider: "letsencrypt" } },
-      { id: "n4", type: "RateLimit", label: "50 rps / burst 100", x: 480, y: 80, properties: { rps: 50, burst: 100 } },
-      { id: "n5", type: "Route", label: "/v1/*", x: 680, y: 80, properties: { path: "/v1/*", mode: "dynamic" } },
-      { id: "n6", type: "Backend", label: "api-service:8080", x: 880, y: 80, properties: { upstream: "api-service:8080" } },
+      { id: "n2", type: "Domain", label: "api.example.com", x: 300, y: 80, properties: { hostnames: ["api.example.com", "www.example.com"] } },
+      { id: "n3", type: "SSL", label: "LE · api.example.com", x: 60, y: 260, properties: { leMode: true, leDomain: "api.example.com", leChallenge: "http-01", leEmail: "ops@proxyforge.io", leStatus: "issued" } },
+      { id: "n3b", type: "SSL", label: "LE · www.example.com", x: 320, y: 320, properties: { leMode: true, leDomain: "www.example.com", leChallenge: "dns-01", leDnsProvider: "cloudflare", leEmail: "ops@proxyforge.io", leStatus: "issued" } },
+      { id: "n4", type: "RateLimit", label: "50 rps / burst 100", x: 560, y: 80, properties: { rate: "50r/s", burst: 100 } },
+      { id: "n5", type: "Route", label: "/v1/*", x: 780, y: 80, properties: { path: "/v1/*", matchMode: "prefix" } },
+      { id: "n6", type: "Backend", label: "api-service:8080", x: 1000, y: 80, properties: { address: "api-service", port: 8080 } },
     ],
     edges: [
       { id: "e1", from: "n1", to: "n2" },
       { id: "e2", from: "n2", to: "n3" },
+      { id: "e2b", from: "n2", to: "n3b" },
       { id: "e3", from: "n2", to: "n4" },
       { id: "e4", from: "n4", to: "n5" },
       { id: "e5", from: "n5", to: "n6" },
@@ -320,4 +322,37 @@ export const apiService = {
       p95Latency: 68,
     };
   },
+
+  /**
+   * Live request count for a single node aggregated over a rolling window
+   * ending at "now". Deterministic per (nodeId, range) so the UI is stable
+   * between renders, with a small time-based drift so it feels "live".
+   */
+  async getNodeStats(nodeId: string, range: StatsRange): Promise<NodeStats> {
+    await delay(120);
+    // Deterministic hash of nodeId
+    let h = 0;
+    for (let i = 0; i < nodeId.length; i++) h = (h * 31 + nodeId.charCodeAt(i)) >>> 0;
+    const base = (h % 900) + 20; // 20..920 baseline events/sec seed
+    const multipliers: Record<StatsRange, number> = {
+      sec: 1,
+      min: 60,
+      hour: 3600,
+      day: 86_400,
+      week: 604_800,
+      month: 2_592_000,
+    };
+    const drift = Math.sin(Date.now() / 30_000 + h) * 0.15 + 1; // ±15%
+    const count = Math.max(0, Math.round(base * multipliers[range] * drift * 0.02));
+    return { nodeId, range, count, generatedAt: new Date().toISOString() };
+  },
 };
+
+export type StatsRange = "sec" | "min" | "hour" | "day" | "week" | "month";
+export interface NodeStats {
+  nodeId: string;
+  range: StatsRange;
+  count: number;
+  generatedAt: string;
+}
+

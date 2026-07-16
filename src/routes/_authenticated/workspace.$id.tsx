@@ -23,6 +23,7 @@ import {
   ZoomOut,
   Maximize2,
   Trash2,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -38,10 +39,18 @@ import {
   updateNodeLabel,
 } from "@/store/slices/workflowsSlice";
 import type { NodeType, WorkflowNode } from "@/services/api";
+import { apiService, type StatsRange } from "@/services/api";
 import { validateNode } from "@/lib/nodeSchemas";
 import { canConnect, computeLabel, domainIsHttps } from "@/lib/nodeRules";
 import { PropertyPanel } from "@/components/workspace/PropertyPanel";
 import { NginxPreviewDialog } from "@/components/workspace/NginxPreviewDialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
@@ -57,7 +66,8 @@ export const Route = createFileRoute("/_authenticated/workspace/$id")({
 
 const NODE_W = 200;
 const NODE_H_BASE = 64;
-const HOST_ROW_H = 22;
+const DOMAIN_HEADER_H = 44;
+const HOST_ROW_H = 24;
 const HANDLE_R = 6;
 
 function domainHosts(n: WorkflowNode): string[] {
@@ -68,9 +78,30 @@ function domainHosts(n: WorkflowNode): string[] {
 function nodeHeight(n: WorkflowNode): number {
   if (n.type === "Domain") {
     const rows = Math.max(1, domainHosts(n).length);
-    return NODE_H_BASE + (rows > 1 ? (rows - 1) * HOST_ROW_H : 0);
+    return DOMAIN_HEADER_H + rows * HOST_ROW_H + 8;
   }
   return NODE_H_BASE;
+}
+
+// Y (relative to node top) of a given hostname row center.
+function domainHostRowY(index: number): number {
+  return DOMAIN_HEADER_H + index * HOST_ROW_H + HOST_ROW_H / 2;
+}
+
+// Y (relative to node top) of the Listener-facing input for a Domain node.
+function domainInputY(): number {
+  return DOMAIN_HEADER_H / 2;
+}
+
+// Given a Domain and a target SSL node, pick which hostname row the edge
+// should originate from — the row whose hostname matches SSL.leDomain,
+// falling back to the first row.
+function domainSslRowIndex(domain: WorkflowNode, ssl: WorkflowNode): number {
+  const hosts = domainHosts(domain);
+  const target = String(ssl.properties.leDomain ?? "").trim().toLowerCase();
+  if (!target) return 0;
+  const idx = hosts.findIndex((h) => h.toLowerCase() === target);
+  return idx >= 0 ? idx : 0;
 }
 
 
@@ -98,8 +129,24 @@ const paletteGroups: { label: string; items: NodeType[] }[] = [
 
 interface Pending {
   fromId: string;
+  sourceY?: number; // pixel Y (world) of the source handle, if not the middle
   x: number;
   y: number;
+}
+
+const STATS_RANGES: { value: StatsRange; label: string }[] = [
+  { value: "sec", label: "per sec" },
+  { value: "min", label: "per min" },
+  { value: "hour", label: "per hour" },
+  { value: "day", label: "per day" },
+  { value: "week", label: "per week" },
+  { value: "month", label: "per month" },
+];
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
 }
 
 function WorkflowEditor() {
@@ -115,6 +162,9 @@ function WorkflowEditor() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
+  const [statsRange, setStatsRange] = useState<StatsRange>("min");
+  const [nodeStats, setNodeStats] = useState<Record<string, number>>({});
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
@@ -167,11 +217,17 @@ function WorkflowEditor() {
     (e.currentTarget as HTMLDivElement).releasePointerCapture?.(e.pointerId);
   };
 
-  // Connection drag
-  const onOutputPointerDown = (e: RPointerEvent<HTMLDivElement>, n: WorkflowNode) => {
+  // Connection drag. `sourceY` is the world Y of the specific output handle
+  // being dragged from (e.g. a per-hostname handle on a Domain node), so the
+  // rubber-band and resulting edge start from the correct row.
+  const onOutputPointerDown = (
+    e: RPointerEvent<HTMLDivElement>,
+    n: WorkflowNode,
+    sourceY?: number,
+  ) => {
     e.stopPropagation();
     const world = toWorld(e.clientX, e.clientY);
-    setPending({ fromId: n.id, x: world.x, y: world.y });
+    setPending({ fromId: n.id, sourceY, x: world.x, y: world.y });
   };
 
   const onViewportPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
@@ -265,6 +321,29 @@ function WorkflowEditor() {
     return () => window.removeEventListener("keydown", handler);
   }, [dispatch, selectedNode, selectedEdge]);
 
+  // Live per-node request stats. Polls the API on interval when enabled and
+  // whenever the range or node set changes. Cleans up on unmount / disable.
+  useEffect(() => {
+    if (!workflow || !showStats) return;
+    let cancelled = false;
+    const load = async () => {
+      const entries = await Promise.all(
+        workflow.nodes.map(async (n) => {
+          const s = await apiService.getNodeStats(n.id, statsRange);
+          return [n.id, s.count] as const;
+        }),
+      );
+      if (cancelled) return;
+      setNodeStats(Object.fromEntries(entries));
+    };
+    load();
+    const t = window.setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [workflow, showStats, statsRange]);
+
   const nodeErrors = useMemo(() => {
     const map: Record<string, boolean> = {};
     if (!workflow) return map;
@@ -312,6 +391,30 @@ function WorkflowEditor() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-md border border-border/60 bg-card/50 pl-2">
+            <Button
+              variant={showStats ? "default" : "ghost"}
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setShowStats((v) => !v)}
+              title="Toggle live request counts"
+            >
+              <Activity className="h-3.5 w-3.5" />
+              {showStats ? "Live" : "Live off"}
+            </Button>
+            <Select value={statsRange} onValueChange={(v) => setStatsRange(v as StatsRange)}>
+              <SelectTrigger className="h-7 border-0 bg-transparent px-2 text-xs shadow-none">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATS_RANGES.map((r) => (
+                  <SelectItem key={r.value} value={r.value} className="text-xs">
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
             <FileCode className="h-4 w-4" /> View nginx.conf
           </Button>
@@ -447,10 +550,27 @@ function WorkflowEditor() {
                 const from = workflow.nodes.find((n) => n.id === e.from);
                 const to = workflow.nodes.find((n) => n.id === e.to);
                 if (!from || !to) return null;
+                // Source Y: for Domain→SSL edges, exit from the specific
+                // hostname row that matches the SSL's leDomain. Otherwise
+                // exit from the Domain's header row. Non-Domain sources use
+                // vertical middle.
+                let y1: number;
+                if (from.type === "Domain") {
+                  if (to.type === "SSL") {
+                    y1 = from.y + domainHostRowY(domainSslRowIndex(from, to));
+                  } else {
+                    y1 = from.y + DOMAIN_HEADER_H / 2;
+                  }
+                } else {
+                  y1 = from.y + nodeHeight(from) / 2;
+                }
                 const x1 = from.x + NODE_W;
-                const y1 = from.y + nodeHeight(from) / 2;
+                // Target Y: Domain inputs come in at the header row.
+                const y2 =
+                  to.type === "Domain"
+                    ? to.y + domainInputY()
+                    : to.y + nodeHeight(to) / 2;
                 const x2 = to.x;
-                const y2 = to.y + nodeHeight(to) / 2;
                 const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
                 const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
                 const active = selectedEdge === e.id;
@@ -477,7 +597,7 @@ function WorkflowEditor() {
                   const from = workflow.nodes.find((n) => n.id === pending.fromId);
                   if (!from) return null;
                   const x1 = from.x + NODE_W;
-                  const y1 = from.y + nodeHeight(from) / 2;
+                  const y1 = pending.sourceY ?? from.y + nodeHeight(from) / 2;
                   const dx = Math.max(40, Math.abs(pending.x - x1) * 0.5);
                   const d = `M${x1},${y1} C${x1 + dx},${y1} ${pending.x - dx},${pending.y} ${pending.x},${pending.y}`;
                   return (
@@ -532,7 +652,7 @@ function WorkflowEditor() {
                   onPointerMove={onNodePointerMove}
                   onPointerUp={onNodePointerUp}
                 >
-                  <div className="cursor-grab p-3 active:cursor-grabbing">
+                  <div className="cursor-grab p-3 pb-1 active:cursor-grabbing">
                     <div className="flex items-center gap-2">
                       <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-primary">
                         <Icon className="h-3.5 w-3.5" />
@@ -550,74 +670,105 @@ function WorkflowEditor() {
                       )}
                     </div>
                     {n.type === "Domain" && hosts.length > 0 ? (
-                      <div className="mt-1 space-y-0.5">
-                        {hosts.map((host, i) => (
-                          <div
-                            key={`${host}-${i}`}
-                            className="relative flex items-center gap-1 truncate text-xs"
-                            style={{ height: HOST_ROW_H }}
-                          >
-                            <span className="truncate font-medium">{host}</span>
-                            {httpsBehind && (
-                              <span className="ml-auto text-[9px] text-primary/80">SSL</span>
-                            )}
-                          </div>
-                        ))}
+                      <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                        {hosts.length} host{hosts.length > 1 ? "s" : ""}
                       </div>
                     ) : (
                       <div className="mt-1 truncate text-sm font-medium">{computeLabel(n)}</div>
                     )}
                   </div>
 
-                  {/* Input handle */}
-                  <div
-                    data-handle="in"
-                    onPointerUp={(e) => onInputPointerUp(e, n)}
-                    style={{
-                      left: -HANDLE_R,
-                      top: h / 2 - HANDLE_R,
-                      width: HANDLE_R * 2,
-                      height: HANDLE_R * 2,
-                    }}
-                    className={cn(
-                      "absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary",
-                      suggested && "ring-2 ring-emerald-500/60 animate-pulse",
-                    )}
-                  />
+                  {/* Domain: per-hostname rows with dedicated SSL output handle on the right of each row */}
+                  {n.type === "Domain" && hosts.length > 0 && (
+                    <div className="px-3 pb-2">
+                      {hosts.map((host, i) => (
+                        <div
+                          key={`${host}-${i}`}
+                          className="relative flex items-center gap-1 text-xs"
+                          style={{ height: HOST_ROW_H }}
+                        >
+                          <span className="truncate font-medium">{host}</span>
+                          {httpsBehind && (
+                            <span className="ml-auto pr-2 text-[9px] uppercase tracking-wider text-primary/80">
+                              SSL
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                  {/* Per-hostname SSL handles (front of node) for HTTPS domains with >1 hostname */}
-                  {n.type === "Domain" && httpsBehind && hosts.length > 1 &&
-                    hosts.map((_, i) => {
-                      const rowY = NODE_H_BASE + i * HOST_ROW_H - HOST_ROW_H / 2;
+                  {/* Live request count badge (corner) */}
+                  {showStats && (
+                    <div
+                      className="absolute -right-2 -top-2 z-20 rounded-full border border-primary/40 bg-background px-1.5 py-0.5 text-[10px] font-mono text-primary shadow"
+                      title={`Requests ${STATS_RANGES.find((r) => r.value === statsRange)?.label ?? statsRange}`}
+                    >
+                      {formatCount(nodeStats[n.id] ?? 0)}
+                    </div>
+                  )}
+
+                  {/* Input handle — Domain uses the header row Y so it doesn't collide with per-host outputs. Listener has no input. */}
+                  {n.type !== "Listener" && n.type !== "TCP" && n.type !== "UDP" && (
+                    <div
+                      data-handle="in"
+                      onPointerUp={(e) => onInputPointerUp(e, n)}
+                      style={{
+                        left: -HANDLE_R,
+                        top:
+                          (n.type === "Domain" ? domainInputY() : h / 2) - HANDLE_R,
+                        width: HANDLE_R * 2,
+                        height: HANDLE_R * 2,
+                      }}
+                      className={cn(
+                        "absolute z-10 rounded-full border-2 border-primary bg-background hover:scale-125 hover:bg-primary",
+                        suggested && "ring-2 ring-emerald-500/60 animate-pulse",
+                      )}
+                    />
+                  )}
+
+                  {/* Per-hostname SSL OUTPUT handles on the right of each host row (only when the domain sits behind an HTTPS listener). Dragging from here starts a Domain→SSL connection at the correct row. */}
+                  {n.type === "Domain" && httpsBehind &&
+                    hosts.map((host, i) => {
+                      const rowY = domainHostRowY(i);
                       return (
                         <div
-                          key={`sslin-${i}`}
-                          data-handle="in-ssl"
-                          onPointerUp={(e) => onInputPointerUp(e, n)}
+                          key={`sslout-${i}`}
+                          data-handle="out-ssl"
+                          onPointerDown={(e) => onOutputPointerDown(e, n, n.y + rowY)}
                           style={{
-                            left: -HANDLE_R,
+                            left: NODE_W - HANDLE_R,
                             top: rowY - HANDLE_R,
                             width: HANDLE_R * 2,
                             height: HANDLE_R * 2,
                           }}
-                          className="absolute z-10 rounded-full border-2 border-primary/60 bg-background hover:scale-125 hover:bg-primary"
-                          title={`SSL connector for ${hosts[i]}`}
+                          className="absolute z-10 cursor-crosshair rounded-full border-2 border-emerald-500 bg-emerald-500/80 hover:scale-125"
+                          title={`Connect SSL for ${host}`}
                         />
                       );
                     })}
 
-                  {/* Output handle (Backend/GRPC have no output; hide) */}
+                  {/* Main output handle — Domain output for non-SSL targets exits from the header row; other node types use vertical middle. Backend/GRPC/SSL are terminal (no output). */}
                   {n.type !== "Backend" && n.type !== "GRPC" && n.type !== "SSL" && (
                     <div
                       data-handle="out"
-                      onPointerDown={(e) => onOutputPointerDown(e, n)}
+                      onPointerDown={(e) =>
+                        onOutputPointerDown(
+                          e,
+                          n,
+                          n.type === "Domain" ? n.y + DOMAIN_HEADER_H / 2 : undefined,
+                        )
+                      }
                       style={{
                         left: NODE_W - HANDLE_R,
-                        top: h / 2 - HANDLE_R,
+                        top:
+                          (n.type === "Domain" ? DOMAIN_HEADER_H / 2 : h / 2) -
+                          HANDLE_R,
                         width: HANDLE_R * 2,
                         height: HANDLE_R * 2,
                       }}
                       className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
+                      title={n.type === "Domain" ? "Connect to next node (Route/Auth/LB/…)" : "Connect to next node"}
                     />
                   )}
                 </div>

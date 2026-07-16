@@ -5,11 +5,21 @@ expects. The current app ships an in-memory dummy implementation; a real
 backend must expose the endpoints below with the same request/response
 shapes. Update this document every time a new endpoint is added to the UI.
 
+**No hardcoded page data.** Every page in the app reads through
+`apiService` — `Login`, `Dashboard`, `Workspace list`, `Workspace editor`
+(including per-node live counters), `Deployments`, `Certificates`,
+`Metrics`, `Logs`, and `Settings`. The list of demo credentials on the
+Login screen is UI copy pointing at seeded users; the credentials
+themselves are validated by `POST /auth/login`. When a new UI surface is
+added, add its endpoint to section 7 and back it here.
+
 - Base URL: `${API_BASE_URL}` (e.g. `https://api.nginxproxyforge.io`)
 - Auth: `Authorization: Bearer <token>` on every non-auth route
 - Content-Type: `application/json` (unless noted)
 - Errors: `{ "error": { "code": string, "message": string, "details"?: any } }`
   with matching HTTP status (400 / 401 / 403 / 404 / 409 / 422 / 500).
+
+
 
 ---
 
@@ -223,6 +233,22 @@ Query: `?range=1h|24h|7d|30d&workflowId=`
 }
 ```
 
+### GET /metrics/nodes/:nodeId
+Query: `?range=sec|min|hour|day|week|month&workflowId=`
+Powers the workspace canvas "Live" per-node request counters. The workspace
+polls this endpoint every 5 seconds for every node in the current workflow
+while the Live toggle is on.
+200:
+```json
+{
+  "nodeId": "n_abc123",
+  "range": "min",
+  "count": 4820,
+  "generatedAt": "2026-07-16T12:34:56Z",
+  "series"?: [/* optional per-bucket samples for sparklines */]
+}
+```
+
 ### GET /logs
 Query: `?workflowId=&level=&limit=&cursor=&from=&to=`
 200: `Array<{ ts: string, level: "info"|"warn"|"error", workflowId?: string, message: string }>`
@@ -258,6 +284,7 @@ Body: partial settings.
 | Certificates page                      | `GET /certificates`, `DELETE /certificates/:id`                    |
 | Deployments page                       | `GET /deployments`                                                 |
 | Metrics page                           | `GET /metrics/traffic`                                             |
+| Workspace live node counters           | `GET /metrics/nodes/:nodeId?range=…` (polled every 5s)             |
 | Logs page                              | `GET /logs` (+ optional `/logs/stream`)                            |
 | Settings page                          | `GET /settings`, `PATCH /settings`                                 |
 
@@ -304,3 +331,9 @@ Update this section whenever the UI adds/changes an endpoint contract.
 - 2026-07-15 — initial draft. Covers auth, workflows, deployments,
   certificates (incl. Let's Encrypt), metrics, logs, settings. Added
   GRPC, TCP, UDP node types.
+- 2026-07-16 — added `GET /metrics/nodes/:nodeId` for the workspace
+  per-node live request counter, with `range` = `sec | min | hour | day
+  | week | month`. Domain node model clarified: `hostnames: string[]`
+  is authoritative (a single-domain node is `hostnames: [x]`), and each
+  hostname is a distinct SSL attachment point in the canvas UI.
+
