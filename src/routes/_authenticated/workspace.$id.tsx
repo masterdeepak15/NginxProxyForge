@@ -66,7 +66,8 @@ export const Route = createFileRoute("/_authenticated/workspace/$id")({
 
 const NODE_W = 200;
 const NODE_H_BASE = 64;
-const HOST_ROW_H = 22;
+const DOMAIN_HEADER_H = 44;
+const HOST_ROW_H = 24;
 const HANDLE_R = 6;
 
 function domainHosts(n: WorkflowNode): string[] {
@@ -77,9 +78,30 @@ function domainHosts(n: WorkflowNode): string[] {
 function nodeHeight(n: WorkflowNode): number {
   if (n.type === "Domain") {
     const rows = Math.max(1, domainHosts(n).length);
-    return NODE_H_BASE + (rows > 1 ? (rows - 1) * HOST_ROW_H : 0);
+    return DOMAIN_HEADER_H + rows * HOST_ROW_H + 8;
   }
   return NODE_H_BASE;
+}
+
+// Y (relative to node top) of a given hostname row center.
+function domainHostRowY(index: number): number {
+  return DOMAIN_HEADER_H + index * HOST_ROW_H + HOST_ROW_H / 2;
+}
+
+// Y (relative to node top) of the Listener-facing input for a Domain node.
+function domainInputY(): number {
+  return DOMAIN_HEADER_H / 2;
+}
+
+// Given a Domain and a target SSL node, pick which hostname row the edge
+// should originate from — the row whose hostname matches SSL.leDomain,
+// falling back to the first row.
+function domainSslRowIndex(domain: WorkflowNode, ssl: WorkflowNode): number {
+  const hosts = domainHosts(domain);
+  const target = String(ssl.properties.leDomain ?? "").trim().toLowerCase();
+  if (!target) return 0;
+  const idx = hosts.findIndex((h) => h.toLowerCase() === target);
+  return idx >= 0 ? idx : 0;
 }
 
 
