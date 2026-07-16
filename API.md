@@ -223,6 +223,22 @@ Query: `?range=1h|24h|7d|30d&workflowId=`
 }
 ```
 
+### GET /metrics/nodes/:nodeId
+Query: `?range=sec|min|hour|day|week|month&workflowId=`
+Powers the workspace canvas "Live" per-node request counters. The workspace
+polls this endpoint every 5 seconds for every node in the current workflow
+while the Live toggle is on.
+200:
+```json
+{
+  "nodeId": "n_abc123",
+  "range": "min",
+  "count": 4820,
+  "generatedAt": "2026-07-16T12:34:56Z",
+  "series"?: [/* optional per-bucket samples for sparklines */]
+}
+```
+
 ### GET /logs
 Query: `?workflowId=&level=&limit=&cursor=&from=&to=`
 200: `Array<{ ts: string, level: "info"|"warn"|"error", workflowId?: string, message: string }>`
