@@ -284,6 +284,7 @@ Body: partial settings.
 | Certificates page                      | `GET /certificates`, `DELETE /certificates/:id`                    |
 | Deployments page                       | `GET /deployments`                                                 |
 | Metrics page                           | `GET /metrics/traffic`                                             |
+| Workspace live node counters           | `GET /metrics/nodes/:nodeId?range=…` (polled every 5s)             |
 | Logs page                              | `GET /logs` (+ optional `/logs/stream`)                            |
 | Settings page                          | `GET /settings`, `PATCH /settings`                                 |
 
