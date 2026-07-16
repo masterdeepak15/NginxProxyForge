@@ -5,11 +5,21 @@ expects. The current app ships an in-memory dummy implementation; a real
 backend must expose the endpoints below with the same request/response
 shapes. Update this document every time a new endpoint is added to the UI.
 
+**No hardcoded page data.** Every page in the app reads through
+`apiService` — `Login`, `Dashboard`, `Workspace list`, `Workspace editor`
+(including per-node live counters), `Deployments`, `Certificates`,
+`Metrics`, `Logs`, and `Settings`. The list of demo credentials on the
+Login screen is UI copy pointing at seeded users; the credentials
+themselves are validated by `POST /auth/login`. When a new UI surface is
+added, add its endpoint to section 7 and back it here.
+
 - Base URL: `${API_BASE_URL}` (e.g. `https://api.nginxproxyforge.io`)
 - Auth: `Authorization: Bearer <token>` on every non-auth route
 - Content-Type: `application/json` (unless noted)
 - Errors: `{ "error": { "code": string, "message": string, "details"?: any } }`
   with matching HTTP status (400 / 401 / 403 / 404 / 409 / 422 / 500).
+
+
 
 ---
 
