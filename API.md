@@ -331,3 +331,9 @@ Update this section whenever the UI adds/changes an endpoint contract.
 - 2026-07-15 — initial draft. Covers auth, workflows, deployments,
   certificates (incl. Let's Encrypt), metrics, logs, settings. Added
   GRPC, TCP, UDP node types.
+- 2026-07-16 — added `GET /metrics/nodes/:nodeId` for the workspace
+  per-node live request counter, with `range` = `sec | min | hour | day
+  | week | month`. Domain node model clarified: `hostnames: string[]`
+  is authoritative (a single-domain node is `hostnames: [x]`), and each
+  hostname is a distinct SSL attachment point in the canvas UI.
+
