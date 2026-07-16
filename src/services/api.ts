@@ -322,4 +322,37 @@ export const apiService = {
       p95Latency: 68,
     };
   },
+
+  /**
+   * Live request count for a single node aggregated over a rolling window
+   * ending at "now". Deterministic per (nodeId, range) so the UI is stable
+   * between renders, with a small time-based drift so it feels "live".
+   */
+  async getNodeStats(nodeId: string, range: StatsRange): Promise<NodeStats> {
+    await delay(120);
+    // Deterministic hash of nodeId
+    let h = 0;
+    for (let i = 0; i < nodeId.length; i++) h = (h * 31 + nodeId.charCodeAt(i)) >>> 0;
+    const base = (h % 900) + 20; // 20..920 baseline events/sec seed
+    const multipliers: Record<StatsRange, number> = {
+      sec: 1,
+      min: 60,
+      hour: 3600,
+      day: 86_400,
+      week: 604_800,
+      month: 2_592_000,
+    };
+    const drift = Math.sin(Date.now() / 30_000 + h) * 0.15 + 1; // ±15%
+    const count = Math.max(0, Math.round(base * multipliers[range] * drift * 0.02));
+    return { nodeId, range, count, generatedAt: new Date().toISOString() };
+  },
 };
+
+export type StatsRange = "sec" | "min" | "hour" | "day" | "week" | "month";
+export interface NodeStats {
+  nodeId: string;
+  range: StatsRange;
+  count: number;
+  generatedAt: string;
+}
+
