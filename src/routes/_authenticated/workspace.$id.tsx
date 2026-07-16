@@ -391,6 +391,30 @@ function WorkflowEditor() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-md border border-border/60 bg-card/50 pl-2">
+            <Button
+              variant={showStats ? "default" : "ghost"}
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => setShowStats((v) => !v)}
+              title="Toggle live request counts"
+            >
+              <Activity className="h-3.5 w-3.5" />
+              {showStats ? "Live" : "Live off"}
+            </Button>
+            <Select value={statsRange} onValueChange={(v) => setStatsRange(v as StatsRange)}>
+              <SelectTrigger className="h-7 border-0 bg-transparent px-2 text-xs shadow-none">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATS_RANGES.map((r) => (
+                  <SelectItem key={r.value} value={r.value} className="text-xs">
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
             <FileCode className="h-4 w-4" /> View nginx.conf
           </Button>
