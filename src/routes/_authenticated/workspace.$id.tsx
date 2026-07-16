@@ -129,8 +129,24 @@ const paletteGroups: { label: string; items: NodeType[] }[] = [
 
 interface Pending {
   fromId: string;
+  sourceY?: number; // pixel Y (world) of the source handle, if not the middle
   x: number;
   y: number;
+}
+
+const STATS_RANGES: { value: StatsRange; label: string }[] = [
+  { value: "sec", label: "per sec" },
+  { value: "min", label: "per min" },
+  { value: "hour", label: "per hour" },
+  { value: "day", label: "per day" },
+  { value: "week", label: "per week" },
+  { value: "month", label: "per month" },
+];
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
 }
 
 function WorkflowEditor() {
@@ -146,6 +162,9 @@ function WorkflowEditor() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
+  const [statsRange, setStatsRange] = useState<StatsRange>("min");
+  const [nodeStats, setNodeStats] = useState<Record<string, number>>({});
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
