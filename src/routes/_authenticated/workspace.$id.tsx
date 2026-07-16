@@ -23,6 +23,7 @@ import {
   ZoomOut,
   Maximize2,
   Trash2,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -38,10 +39,18 @@ import {
   updateNodeLabel,
 } from "@/store/slices/workflowsSlice";
 import type { NodeType, WorkflowNode } from "@/services/api";
+import { apiService, type StatsRange } from "@/services/api";
 import { validateNode } from "@/lib/nodeSchemas";
 import { canConnect, computeLabel, domainIsHttps } from "@/lib/nodeRules";
 import { PropertyPanel } from "@/components/workspace/PropertyPanel";
 import { NginxPreviewDialog } from "@/components/workspace/NginxPreviewDialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
