@@ -217,11 +217,17 @@ function WorkflowEditor() {
     (e.currentTarget as HTMLDivElement).releasePointerCapture?.(e.pointerId);
   };
 
-  // Connection drag
-  const onOutputPointerDown = (e: RPointerEvent<HTMLDivElement>, n: WorkflowNode) => {
+  // Connection drag. `sourceY` is the world Y of the specific output handle
+  // being dragged from (e.g. a per-hostname handle on a Domain node), so the
+  // rubber-band and resulting edge start from the correct row.
+  const onOutputPointerDown = (
+    e: RPointerEvent<HTMLDivElement>,
+    n: WorkflowNode,
+    sourceY?: number,
+  ) => {
     e.stopPropagation();
     const world = toWorld(e.clientX, e.clientY);
-    setPending({ fromId: n.id, x: world.x, y: world.y });
+    setPending({ fromId: n.id, sourceY, x: world.x, y: world.y });
   };
 
   const onViewportPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
