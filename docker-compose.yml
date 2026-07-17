@@ -1,9 +1,6 @@
 services:
   proxyforge:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: proxyforge:latest
+    image: ghcr.io/masterdeepak15/nginxproxyforge:latest
     container_name: proxyforge
     restart: unless-stopped
     ports:
@@ -19,3 +16,9 @@ services:
       - ADMIN_EMAIL=admin@proxyforge.local
       # - ADMIN_INITIAL_PASSWORD=set-a-fixed-password-here
       - JWT_SECRET=change-me-to-a-long-random-string
+
+  # To build locally from source instead of pulling the registry image, swap
+  # the `image:` line above for:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile

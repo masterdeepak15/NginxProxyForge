@@ -30,7 +30,7 @@ RUN npm prune --omit=dev
 # ─────────────────────────────────────────────────────────────────────────
 FROM node:24-alpine AS final
 
-RUN apk add --no-cache nginx certbot tzdata
+RUN apk add --no-cache nginx nginx-mod-stream certbot tzdata
 
 WORKDIR /app
 
