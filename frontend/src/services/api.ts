@@ -230,7 +230,14 @@ export const apiService = {
   },
   async getLetsEncryptJob(
     jobId: string,
-  ): Promise<{ status: "pending" | "issued" | "error"; error?: string; certificateId?: string }> {
+  ): Promise<{
+    status: "pending" | "issued" | "error";
+    error?: string;
+    certificateId?: string;
+    certPath?: string;
+    keyPath?: string;
+    expiresAt?: string;
+  }> {
     return get(`/certificates/lets-encrypt/${jobId}`);
   },
   async uploadCertificate(params: { domain: string; certPem: string; keyPem: string }): Promise<Certificate> {

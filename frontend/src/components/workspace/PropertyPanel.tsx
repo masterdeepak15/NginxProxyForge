@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Trash2, AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
-import type { WorkflowNode } from "@/services/api";
+import { apiService, type WorkflowNode } from "@/services/api";
 import { nodeSchemas, validateNode } from "@/lib/nodeSchemas";
 import { FieldRenderer } from "./FieldRenderer";
 
@@ -89,6 +89,7 @@ export function PropertyPanel({ node, onChangeLabel, onChangeProps, onDelete }: 
   );
 }
 
+
 function LetsEncryptAction({
   node,
   onChangeProps,
@@ -96,48 +97,108 @@ function LetsEncryptAction({
   node: WorkflowNode;
   onChangeProps: (props: Record<string, unknown>) => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const status = String(node.properties.leStatus ?? "idle");
-  const error = String(node.properties.leError ?? "");
-  const domain = String(node.properties.leDomain ?? "").trim();
+  const domain = (node.properties.leDomain as string) || "";
+  const email = (node.properties.leEmail as string) || "";
+  const challenge = ((node.properties.leChallenge as string) || "http-01") as "http-01" | "dns-01";
+  const dnsProvider = node.properties.leDnsProvider as string | undefined;
+  const status = (node.properties.leStatus as string) || "idle";
+  const error = node.properties.leError as string | undefined;
 
-  const run = async () => {
-    if (!domain) {
-      onChangeProps({ leStatus: "error", leError: "Set a certificate domain first." });
+  const [requesting, setRequesting] = useState(false);
+
+  const request = async () => {
+    if (!domain.trim()) {
+      onChangeProps({ leStatus: "error", leError: "Enter a domain first" });
       return;
     }
-    setBusy(true);
-    onChangeProps({ leStatus: "pending", leError: "" });
-    await new Promise((r) => setTimeout(r, 1200));
-    // Simulated ACME issuance
-    const ok = /^([a-z0-9-]+\.)+[a-z]{2,}$/i.test(domain);
-    if (ok) {
-      onChangeProps({
-        leStatus: "issued",
-        leError: "",
-        certPath: `/etc/letsencrypt/live/${domain}/fullchain.pem`,
-        keyPath: `/etc/letsencrypt/live/${domain}/privkey.pem`,
-      });
-    } else {
-      onChangeProps({ leStatus: "error", leError: `Invalid domain "${domain}".` });
+    if (!email.trim() || !email.includes("@")) {
+      onChangeProps({ leStatus: "error", leError: "A valid contact email is required for ACME registration" });
+      return;
     }
-    setBusy(false);
+
+    setRequesting(true);
+    onChangeProps({ leStatus: "pending", leError: "" });
+
+    try {
+      const { jobId } = await apiService.requestLetsEncrypt({
+        domain: domain.trim(),
+        email: email.trim(),
+        challenge,
+        dnsProvider,
+      });
+
+      // Poll the real certbot job until it resolves. HTTP-01 issuance
+      // typically takes a few seconds; give it up to ~2 minutes.
+      const start = Date.now();
+      const timeoutMs = 120_000;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const job = await apiService.getLetsEncryptJob(jobId);
+        if (job.status === "issued") {
+          onChangeProps({
+            leStatus: "issued",
+            leError: "",
+            certPath: job.certPath || "",
+            keyPath: job.keyPath || "",
+            certificateId: job.certificateId,
+            certExpiresAt: job.expiresAt,
+          });
+          break;
+        }
+        if (job.status === "error") {
+          onChangeProps({ leStatus: "error", leError: job.error || "Certificate issuance failed" });
+          break;
+        }
+        if (Date.now() - start > timeoutMs) {
+          onChangeProps({
+            leStatus: "error",
+            leError: "Timed out waiting for certbot. Check Logs for details — it may still complete.",
+          });
+          break;
+        }
+      }
+    } catch (err) {
+      onChangeProps({
+        leStatus: "error",
+        leError: err instanceof Error ? err.message : "Failed to reach the certificate API",
+      });
+    } finally {
+      setRequesting(false);
+    }
   };
 
   return (
-    <div className="space-y-2 rounded-md border border-border/60 bg-muted/30 p-3">
-      <div className="flex items-center gap-2 text-xs font-medium">
-        <ShieldCheck className="h-3.5 w-3.5 text-primary" /> ACME issuance
-      </div>
-      <Button size="sm" className="h-8 w-full" onClick={run} disabled={busy}>
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-        {status === "issued" ? "Renew certificate" : "Generate certificate"}
+    <div className="space-y-2">
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full"
+        onClick={request}
+        disabled={requesting || status === "pending"}
+      >
+        {requesting || status === "pending" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <ShieldCheck className="h-3.5 w-3.5" />
+        )}
+        {requesting || status === "pending" ? "Requesting certificate…" : "Request Let's Encrypt certificate"}
       </Button>
+      <p className="text-[11px] text-muted-foreground">
+        For HTTP-01, {domain || "the domain"} must already resolve to this server on port 80. Auto-renewal
+        runs automatically every 12h server-side — no per-certificate setting needed.
+      </p>
       {status === "pending" && (
-        <p className="text-[11px] text-muted-foreground">Requesting certificate…</p>
+        <p className="text-[11px] text-muted-foreground">Requesting certificate — this calls real certbot and can take up to a minute…</p>
       )}
       {status === "issued" && (
-        <p className="text-[11px] text-emerald-500">Certificate issued for {domain}.</p>
+        <p className="text-[11px] text-emerald-500">
+          Certificate issued for {domain}
+          {node.properties.certExpiresAt
+            ? ` — expires ${new Date(node.properties.certExpiresAt as string).toLocaleDateString()}`
+            : ""}
+          . Remember to click <strong>Save draft</strong> (or Deploy) so this is persisted.
+        </p>
       )}
       {status === "error" && error && (
         <p className="text-[11px] text-destructive">{error}</p>

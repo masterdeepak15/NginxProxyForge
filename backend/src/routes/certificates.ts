@@ -62,7 +62,25 @@ certificatesRouter.post("/lets-encrypt", (req, res) => {
 certificatesRouter.get("/lets-encrypt/:jobId", (req, res) => {
   const row = db.prepare("SELECT * FROM acme_jobs WHERE id = ?").get(req.params.jobId) as any;
   if (!row) return res.status(404).json({ error: { code: "not_found", message: "Job not found" } });
-  res.json({ status: row.status, error: row.error || undefined, certificateId: row.certificate_id || undefined });
+  let certPath: string | undefined;
+  let keyPath: string | undefined;
+  let expiresAt: string | undefined;
+  if (row.certificate_id) {
+    const cert = db.prepare("SELECT * FROM certificates WHERE id = ?").get(row.certificate_id) as any;
+    if (cert) {
+      certPath = cert.cert_path;
+      keyPath = cert.key_path;
+      expiresAt = cert.expires_at;
+    }
+  }
+  res.json({
+    status: row.status,
+    error: row.error || undefined,
+    certificateId: row.certificate_id || undefined,
+    certPath,
+    keyPath,
+    expiresAt,
+  });
 });
 
 certificatesRouter.post("/", (req, res) => {
