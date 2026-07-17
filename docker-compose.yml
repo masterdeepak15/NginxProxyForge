@@ -1,0 +1,21 @@
+services:
+  proxyforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: proxyforge:latest
+    container_name: proxyforge
+    restart: unless-stopped
+    ports:
+      - "80:80"     # proxied HTTP traffic (real nginx)
+      - "443:443"   # proxied HTTPS traffic (real nginx)
+      - "81:81"     # admin dashboard (UI + API), same convention as Nginx Proxy Manager
+    volumes:
+      - ./data:/data
+    environment:
+      # Change these before first boot in production. ADMIN_EMAIL / a
+      # generated password are otherwise printed once to `docker compose
+      # logs` on first start and never stored in plaintext.
+      - ADMIN_EMAIL=admin@proxyforge.local
+      # - ADMIN_INITIAL_PASSWORD=set-a-fixed-password-here
+      - JWT_SECRET=change-me-to-a-long-random-string

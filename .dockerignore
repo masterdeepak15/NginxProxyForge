@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.tanstack
+**/.output
+**/.vinxi
+**/*.local
+.git
+.gitignore
+.lovable
+data
+*.md
+!README.md
+docker/README.md
