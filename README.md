@@ -48,7 +48,7 @@ NginxProxyForge/
 git clone https://github.com/masterdeepak15/NginxProxyForge.git
 cd NginxProxyForge
 docker compose up -d --build
-docker compose logs -f proxyforge   # grab the generated admin password (first boot only)
+docker compose logs -f proxyforge   # confirm the first-boot admin account
 ```
 
 Then open `http://<host>:81`.
@@ -61,21 +61,26 @@ the container never loses anything; only deleting `./data` does.
 
 ### First-boot credentials
 
-If no admin user exists yet, one is created automatically and the generated
-password is printed **once** to the container logs:
+If no admin user exists yet, one is created automatically on first start.
+It uses a **fixed default** (the same pattern Nginx Proxy Manager uses),
+and is forced to change its password on first login:
 
 ```
 ================================================================
  ProxyForge - first boot admin account created
  Email:    admin@proxyforge.local
- Password: <random>
+ Password: changeme
  You will be required to change this password on first login.
 ================================================================
 ```
 
-Set `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD` in `docker-compose.yml` to fix
-these instead of relying on the generated one. Also change `JWT_SECRET` to a
-long random string before exposing this to the internet.
+⚠️ **This default is publicly known** (it's in this README). It's fine for
+a local/throwaway instance, but before exposing port `81` beyond
+`localhost`, set a real `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD` in
+`docker-compose.yml` so the account is never created with `changeme` in the
+first place — don't rely on getting to the change-password prompt before
+anything else finds the instance. Also change `JWT_SECRET` to a long random
+string.
 
 ## Deployment process (what "Deploy" actually does)
 
@@ -130,15 +135,20 @@ which needs the real container).
 ## Releasing the Docker image
 
 `.github/workflows/docker-release.yml` is the **single** CI workflow in this
-repo. It builds the image from the root `Dockerfile` and pushes it to
-`ghcr.io/<owner>/nginxproxyforge` on every `vX.Y.Z` tag push (or manually via
-"Run workflow"). Once published, point `docker-compose.yml` at the registry
-image instead of building locally:
+repo. It builds the image once from the root `Dockerfile` and pushes it to
+both registries on every `vX.Y.Z` tag push (or manually via "Run workflow"):
+
+- `ghcr.io/masterdeepak15/nginxproxyforge`
+- `masterdeepak15/nginxproxyforge` (Docker Hub) — requires the
+  `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets to be set
+
+Once published, point `docker-compose.yml` at either registry image instead
+of building locally:
 
 ```yaml
 services:
   proxyforge:
-    image: ghcr.io/masterdeepak15/nginxproxyforge:latest
+    image: masterdeepak15/nginxproxyforge:latest   # or ghcr.io/masterdeepak15/nginxproxyforge:latest
     # remove the build: block
 ```
 

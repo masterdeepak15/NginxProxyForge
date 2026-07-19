@@ -29,8 +29,8 @@ function LoginPage() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { status, error } = useAppSelector((s) => s.auth);
-  const [email, setEmail] = useState("admin@proxyforge.io");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -153,14 +153,6 @@ function LoginPage() {
               Sign in
             </Button>
           </form>
-
-          <div className="rounded-md border border-dashed border-border/70 bg-muted/40 p-3 text-xs">
-            <div className="font-medium text-foreground">Demo credentials</div>
-            <div className="mt-1 space-y-0.5 text-muted-foreground">
-              <div>admin@proxyforge.io · admin123</div>
-              <div>ops@proxyforge.io · ops123</div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

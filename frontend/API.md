@@ -1,17 +1,16 @@
 # NginxProxyForge — Backend API Contract
 
 This document specifies the HTTP API the frontend (`src/services/api.ts`)
-expects. The current app ships an in-memory dummy implementation; a real
-backend must expose the endpoints below with the same request/response
-shapes. Update this document every time a new endpoint is added to the UI.
+expects, implemented by `backend/src/routes/*`. Update this document every
+time a new endpoint is added to the UI.
 
 **No hardcoded page data.** Every page in the app reads through
 `apiService` — `Login`, `Dashboard`, `Workspace list`, `Workspace editor`
 (including per-node live counters), `Deployments`, `Certificates`,
-`Metrics`, `Logs`, and `Settings`. The list of demo credentials on the
-Login screen is UI copy pointing at seeded users; the credentials
-themselves are validated by `POST /auth/login`. When a new UI surface is
-added, add its endpoint to section 7 and back it here.
+`Metrics`, `Logs`, and `Settings`. Credentials are validated by
+`POST /auth/login` against real seeded/created users — there is no demo
+login shortcut in the UI. When a new UI surface is added, add its endpoint
+to section 7 and back it here.
 
 - Base URL: `${API_BASE_URL}` (e.g. `https://api.nginxproxyforge.io`)
 - Auth: `Authorization: Bearer <token>` on every non-auth route
@@ -272,7 +271,7 @@ Body: partial settings.
 ## 7. Frontend ↔ Backend mapping
 
 | UI area                                | Endpoints used                                                     |
-| -------------------------------------- | ------------------------------------------------------------------ |
+| --------------------------------------- | ------------------------------------------------------------------ |
 | Login page                             | `POST /auth/login`, `GET /auth/me`                                 |
 | Dashboard KPIs & graphs                | `GET /metrics/stats`, `GET /metrics/traffic`                       |
 | Workspace list                         | `GET /workflows`                                                   |
@@ -336,4 +335,3 @@ Update this section whenever the UI adds/changes an endpoint contract.
   | week | month`. Domain node model clarified: `hostnames: string[]`
   is authoritative (a single-domain node is `hostnames: [x]`), and each
   hostname is a distinct SSL attachment point in the canvas UI.
-

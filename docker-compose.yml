@@ -10,11 +10,12 @@ services:
     volumes:
       - ./data:/data
     environment:
-      # Change these before first boot in production. ADMIN_EMAIL / a
-      # generated password are otherwise printed once to `docker compose
-      # logs` on first start and never stored in plaintext.
+      # Set both before first boot in production. Left as-is, the account
+      # is created as admin@proxyforge.local / changeme (a known default,
+      # forced to change on first login) - fine for local testing, not for
+      # anything reachable outside localhost.
       - ADMIN_EMAIL=admin@proxyforge.local
-      # - ADMIN_INITIAL_PASSWORD=set-a-fixed-password-here
+      - ADMIN_INITIAL_PASSWORD=set-a-strong-password-here
       - JWT_SECRET=change-me-to-a-long-random-string
 
   # To build locally from source instead of pulling the registry image, swap
