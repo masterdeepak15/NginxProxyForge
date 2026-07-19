@@ -98,24 +98,29 @@ CREATE TABLE IF NOT EXISTS log_entries (
 `);
 
 // ---- first-boot seeding ----
+// ---- first-boot seeding ----
+// Fixed, well-known default credentials (like most self-hosted admin tools
+// - e.g. Nginx Proxy Manager's admin@example.com / changeme) rather than a
+// generated password buried in container logs. The account is forced to
+// change its password on first login (must_change_password), and the
+// default can still be overridden via ADMIN_EMAIL / ADMIN_INITIAL_PASSWORD
+// for scripted/non-interactive deployments.
+const DEFAULT_ADMIN_EMAIL = "admin@proxyforge.local";
+const DEFAULT_ADMIN_PASSWORD = "changeme";
+
 const userCount = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
 if (userCount === 0) {
-  const genPassword = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-    let out = "";
-    for (let i = 0; i < 16; i++) out += chars[Math.floor(Math.random() * chars.length)];
-    return out;
-  };
-  const password = process.env.ADMIN_INITIAL_PASSWORD || genPassword();
+  const email = process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL;
+  const password = process.env.ADMIN_INITIAL_PASSWORD || DEFAULT_ADMIN_PASSWORD;
   const hash = bcrypt.hashSync(password, 10);
   db.prepare(
     `INSERT INTO users (id, email, password_hash, name, role, must_change_password) VALUES (?,?,?,?,?,?)`,
-  ).run("u_admin", process.env.ADMIN_EMAIL || "admin@proxyforge.local", hash, "Administrator", "admin", 1);
+  ).run("u_admin", email, hash, "Administrator", "admin", 1);
 
   // eslint-disable-next-line no-console
   console.log("================================================================");
-  console.log(" ProxyForge — first boot admin account created");
-  console.log(` Email:    ${process.env.ADMIN_EMAIL || "admin@proxyforge.local"}`);
+  console.log(" ProxyForge - first boot admin account created");
+  console.log(` Email:    ${email}`);
   console.log(` Password: ${password}`);
   console.log(" You will be required to change this password on first login.");
   console.log("================================================================");

@@ -204,16 +204,26 @@ function WorkflowEditor() {
       ).unwrap();
       const validation = await apiService.validateWorkflow(workflow.id);
       if (!validation.ok) {
-        toast.error(`Cannot deploy: ${validation.errors.length} topology error(s)`);
+        toast.error(`Cannot deploy: ${validation.errors.length} topology error(s)`, {
+          description: validation.errors.map((e) => `${e.nodeId}: ${e.message}`).join("\n"),
+          duration: 15000,
+        });
         return;
       }
       const deployment = await dispatch(deployWorkflowThunk(workflow.id)).unwrap();
+      const tail = (deployment.logs ?? []).slice(-6).join("\n");
       if (deployment.status === "success") {
-        toast.success("Deployed successfully — nginx reloaded and healthy");
+        toast.success("Deployed successfully - nginx reloaded and healthy");
       } else if (deployment.status === "rolled_back") {
-        toast.error("Health check failed — automatically rolled back to the previous config");
+        toast.error("Health check failed - automatically rolled back to the previous config", {
+          description: tail,
+          duration: 20000,
+        });
       } else {
-        toast.error("Deployment failed — see deployment logs for details");
+        toast.error("Deployment failed", {
+          description: tail || "No detail returned - check the Logs page for this workflow.",
+          duration: 20000,
+        });
       }
       dispatch(fetchWorkflow(workflow.id));
     } catch (err) {

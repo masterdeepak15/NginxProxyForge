@@ -156,7 +156,7 @@ const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 export const apiService = {
   // Auth
-  async login(email: string, password: string): Promise<{ user: User; token: string }> {
+  async login(email: string, password: string): Promise<{ user: User; token: string; mustChangePassword: boolean }> {
     return post("/auth/login", { email, password });
   },
   async logout(): Promise<{ ok: true }> {
@@ -164,6 +164,9 @@ export const apiService = {
   },
   async me(): Promise<User> {
     return get("/auth/me");
+  },
+  async updateProfile(body: { name?: string; email?: string }): Promise<User> {
+    return patch("/auth/me", body);
   },
   async changePassword(newPassword: string): Promise<{ ok: true }> {
     return post("/auth/change-password", { newPassword });
@@ -178,6 +181,13 @@ export const apiService = {
   },
   async createWorkflow(name: string, description?: string): Promise<Workflow> {
     return post("/workflows", { name, description });
+  },
+  async importWorkflow(
+    name: string,
+    config: string,
+    description?: string,
+  ): Promise<{ workflow: Workflow; warnings: string[] }> {
+    return post("/workflows/import", { name, description, config });
   },
   async saveWorkflow(id: string, patchBody: Partial<Workflow> & { message?: string }): Promise<Workflow> {
     return patch(`/workflows/${id}`, patchBody);

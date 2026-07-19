@@ -8,6 +8,7 @@ import { deployWorkflow, rollbackDeployment } from "../nginx/deployPipeline";
 import { removeWorkflowConf } from "../nginx/processManager";
 import type { AuthedRequest } from "../middleware/auth";
 import { requireAuth } from "../middleware/auth";
+import { importNginxConfig } from "../lib/nginxParser";
 
 export const workflowsRouter = Router();
 workflowsRouter.use(requireAuth);
@@ -76,6 +77,44 @@ workflowsRouter.post("/", (req: AuthedRequest, res) => {
   res.status(201).json(wf);
 });
 
+
+workflowsRouter.post("/import", (req: AuthedRequest, res) => {
+  const { name, description, config } = req.body || {};
+  if (!name) return res.status(400).json({ error: { code: "bad_request", message: "name is required" } });
+  if (!config || typeof config !== "string" || !config.trim()) {
+    return res.status(400).json({ error: { code: "bad_request", message: "config text is required" } });
+  }
+
+  const { nodes, edges, warnings } = importNginxConfig(config);
+
+  const wf: Workflow = {
+    id: `wf_${randomUUID().slice(0, 8)}`,
+    name,
+    description: description || "Imported from an existing nginx config",
+    status: "draft",
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    domains: deriveDomains(nodes),
+    nodes,
+    edges,
+  };
+  db.prepare(
+    `INSERT INTO workflows (id, name, description, status, version, updated_at, domains, nodes, edges)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    wf.id,
+    wf.name,
+    wf.description,
+    wf.status,
+    wf.version,
+    wf.updatedAt,
+    JSON.stringify(wf.domains),
+    JSON.stringify(wf.nodes),
+    JSON.stringify(wf.edges),
+  );
+  snapshotVersion(wf, req.userId || "system", "Imported from nginx config");
+  res.status(201).json({ workflow: wf, warnings });
+});
 workflowsRouter.patch("/:id", (req: AuthedRequest, res) => {
   const existingRow = db.prepare("SELECT * FROM workflows WHERE id = ?").get(req.params.id);
   if (!existingRow) return res.status(404).json({ error: { code: "not_found", message: "Workflow not found" } });

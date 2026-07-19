@@ -2,7 +2,9 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AppHeader } from "@/components/AppHeader";
+import { ForcePasswordChangeDialog } from "@/components/ForcePasswordChangeDialog";
 import { store } from "@/store";
+import { useAppSelector } from "@/store";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -16,6 +18,8 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
+  const mustChangePassword = useAppSelector((s) => s.auth.mustChangePassword);
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
@@ -27,6 +31,7 @@ function AuthenticatedLayout() {
           </main>
         </div>
       </div>
+      {mustChangePassword && <ForcePasswordChangeDialog />}
     </SidebarProvider>
   );
 }

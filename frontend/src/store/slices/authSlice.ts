@@ -14,6 +14,7 @@ interface AuthState {
   token: string | null;
   status: "idle" | "loading" | "authenticated" | "error";
   error: string | null;
+  mustChangePassword: boolean;
 }
 
 const persisted =
@@ -25,6 +26,7 @@ const initialState: AuthState = {
   token: parsed?.token ?? null,
   status: parsed?.token ? "authenticated" : "idle",
   error: null,
+  mustChangePassword: Boolean(parsed?.mustChangePassword),
 };
 
 export const login = createAsyncThunk(
@@ -47,12 +49,24 @@ const authSlice = createSlice({
       state.token = null;
       state.status = "idle";
       state.error = null;
+      state.mustChangePassword = false;
       if (typeof window !== "undefined") window.localStorage.removeItem("pf_auth");
     },
-    hydrateAuth(state, action: PayloadAction<{ user: User; token: string }>) {
+    hydrateAuth(state, action: PayloadAction<{ user: User; token: string; mustChangePassword?: boolean }>) {
       state.user = action.payload.user;
       state.token = action.payload.token;
       state.status = "authenticated";
+      state.mustChangePassword = Boolean(action.payload.mustChangePassword);
+    },
+    passwordChanged(state) {
+      state.mustChangePassword = false;
+      if (typeof window !== "undefined") {
+        const persisted = window.localStorage.getItem("pf_auth");
+        if (persisted) {
+          const parsed = JSON.parse(persisted);
+          window.localStorage.setItem("pf_auth", JSON.stringify({ ...parsed, mustChangePassword: false }));
+        }
+      }
     },
   },
   extraReducers: (b) => {
@@ -64,6 +78,7 @@ const authSlice = createSlice({
       s.status = "authenticated";
       s.user = a.payload.user;
       s.token = a.payload.token;
+      s.mustChangePassword = Boolean((a.payload as { mustChangePassword?: boolean }).mustChangePassword);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("pf_auth", JSON.stringify(a.payload));
       }
@@ -75,5 +90,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, hydrateAuth } = authSlice.actions;
+export const { logout, hydrateAuth, passwordChanged } = authSlice.actions;
 export default authSlice.reducer;

@@ -32,6 +32,23 @@ export function PropertyPanel({ node, onChangeLabel, onChangeProps, onDelete }: 
 
   const errors = validation.ok ? {} : validation.errors;
 
+
+  // Listener protocol and port are coupled in real Nginx use: HTTPS
+  // listeners cannot meaningfully bind the conventional HTTP port and
+  // vice versa. Only auto-switch when the port is still at the other
+  // protocol's conventional default, so a deliberately custom port is
+  // never silently overwritten.
+  const handleFieldChange = (key: string, value: unknown) => {
+    if (node.type === "Listener" && key === "protocol") {
+      const currentPort = node.properties.port;
+      const next: Record<string, unknown> = { protocol: value };
+      if (value === "https" && currentPort === 80) next.port = 443;
+      if (value === "http" && currentPort === 443) next.port = 80;
+      onChangeProps(next);
+      return;
+    }
+    onChangeProps({ [key]: value });
+  };
   return (
     <div className="space-y-4">
       <div>
@@ -77,7 +94,7 @@ export function PropertyPanel({ node, onChangeLabel, onChangeProps, onDelete }: 
             value={node.properties[f.key]}
             values={node.properties}
             error={errors[f.key]}
-            onChange={(v) => onChangeProps({ [f.key]: v })}
+            onChange={(v) => handleFieldChange(f.key, v)}
           />
         ))}
       </div>

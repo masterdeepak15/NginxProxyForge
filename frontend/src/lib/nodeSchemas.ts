@@ -483,6 +483,7 @@ const Backend: NodeSchema = {
   nginxContext: "upstream { server ... } / proxy_pass",
   fields: [
     { key: "address", label: "Address", type: "text", placeholder: "app-service" },
+    { key: "scheme", label: "Scheme (proxy_pass target)", type: "select", options: [ { value: "http", label: "http://" }, { value: "https", label: "https://" } ] },
     { key: "port", label: "Port", type: "number", min: 1, max: 65535 },
     { key: "weight", label: "Weight", type: "number", min: 1 },
     { key: "maxFails", label: "max_fails", type: "number", min: 0 },
@@ -497,6 +498,7 @@ const Backend: NodeSchema = {
   ],
   defaults: {
     address: "app-service",
+    scheme: "http",
     port: 8080,
     weight: 1,
     maxFails: 3,
@@ -516,6 +518,7 @@ const Backend: NodeSchema = {
   },
   schema: z.object({
     address: z.string().min(1),
+    scheme: z.enum(["http", "https"]).default("http"),
     port: z.coerce.number().int().min(1).max(65535),
     weight: z.coerce.number().int().min(1),
     maxFails: z.coerce.number().int().min(0),

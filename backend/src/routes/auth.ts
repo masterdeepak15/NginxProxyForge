@@ -36,6 +36,25 @@ authRouter.get("/me", requireAuth, (req: AuthedRequest, res) => {
   res.json(toUser(row));
 });
 
+authRouter.patch("/me", requireAuth, (req: AuthedRequest, res) => {
+  const { name, email } = req.body || {};
+  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId ?? null) as any;
+  if (!row) return res.status(404).json({ error: { code: "not_found", message: "User not found" } });
+
+  const nextName = typeof name === "string" && name.trim() ? name.trim() : row.name;
+  const nextEmail = typeof email === "string" && email.trim() ? email.trim() : row.email;
+
+  if (nextEmail !== row.email) {
+    const clash = db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(nextEmail, row.id);
+    if (clash) {
+      return res.status(409).json({ error: { code: "email_taken", message: "That email is already in use" } });
+    }
+  }
+
+  db.prepare("UPDATE users SET name = ?, email = ? WHERE id = ?").run(nextName, nextEmail, row.id);
+  res.json(toUser({ ...row, name: nextName, email: nextEmail }));
+});
+
 authRouter.post("/change-password", requireAuth, (req: AuthedRequest, res) => {
   const { newPassword } = req.body || {};
   if (!newPassword || String(newPassword).length < 8) {
