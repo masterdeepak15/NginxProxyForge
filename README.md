@@ -1,5 +1,7 @@
 # ProxyForge
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Visual, node-based control plane for Nginx. Design reverse-proxy infrastructure
 as a graph (Listener -> Domain -> SSL -> Route -> Auth/RateLimit/Cache -> LB ->
 Backend), and ProxyForge compiles it to real, validated `nginx.conf` fragments,
@@ -175,3 +177,7 @@ truth if the two ever drift.
   `$request_time` - add it to a custom `log_format` if you need it).
 - DNS-01 ACME challenge support depends on which `certbot-dns-*` plugins you
   add to the image; only the HTTP-01 path is installed by default.
+
+## License
+
+MIT - see [LICENSE](./LICENSE). Free to self-host, modify, and redistribute.
