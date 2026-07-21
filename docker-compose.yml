@@ -10,13 +10,14 @@ services:
     volumes:
       - ./data:/data
     environment:
-      # Set both before first boot in production. Left as-is, the account
-      # is created as admin@proxyforge.local / changeme (a known default,
-      # forced to change on first login) - fine for local testing, not for
-      # anything reachable outside localhost.
+      # Set real values in a local .env file (copy .env.example -> .env)
+      # before first boot in production - never hardcode secrets in this
+      # file, it's tracked in git. Left unset, the account is created as
+      # admin@proxyforge.local / changeme (forced to change on first
+      # login) - fine for local testing, not for anything reachable outside localhost.
       - ADMIN_EMAIL=admin@proxyforge.local
-      - ADMIN_INITIAL_PASSWORD=changeme
-      - JWT_SECRET=ProxyForge_JWT_Signing_Key_2026_Secure_v1_X9kP4mL7qR2tH8nW
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-changeme}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in a local .env file before running in production}
 
   # To build locally from source instead of pulling the registry image, swap
   # the `image:` line above for:

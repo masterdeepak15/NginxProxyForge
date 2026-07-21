@@ -76,11 +76,11 @@ and is forced to change its password on first login:
 
 ⚠️ **This default is publicly known** (it's in this README). It's fine for
 a local/throwaway instance, but before exposing port `81` beyond
-`localhost`, set a real `ADMIN_EMAIL` / `ADMIN_INITIAL_PASSWORD` in
-`docker-compose.yml` so the account is never created with `changeme` in the
-first place — don't rely on getting to the change-password prompt before
-anything else finds the instance. Also change `JWT_SECRET` to a long random
-string.
+`localhost`, set a real `ADMIN_INITIAL_PASSWORD` and `JWT_SECRET` in a
+local `.env` file (copy `.env.example` → `.env`) so the account is never
+created with `changeme` in the first place and the JWT signing key isn't a
+guessable default. `.env` is gitignored — never hardcode either value
+directly in `docker-compose.yml`, which is tracked in git.
 
 ## Deployment process (what "Deploy" actually does)
 
@@ -166,8 +166,8 @@ truth if the two ever drift.
 
 ## Security notes
 
-- Rotate `JWT_SECRET` and set a fixed `ADMIN_INITIAL_PASSWORD` before exposing
-  port `81` beyond localhost.
+- Set `JWT_SECRET` and `ADMIN_INITIAL_PASSWORD` in a local `.env` file (never
+  in `docker-compose.yml` itself) before exposing port `81` beyond localhost.
 - The GitHub PAT used to push this repository during setup should be
   rotated/revoked once you've confirmed the push succeeded - treat any token
   that's been pasted into a chat as compromised.
