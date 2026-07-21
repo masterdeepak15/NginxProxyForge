@@ -9,6 +9,7 @@ interface WorkflowsState {
   error: string | null;
   saveStatus: "idle" | "saving" | "saved" | "error";
   deployStatus: "idle" | "deploying" | "success" | "failed";
+  deleteStatus: "idle" | "deleting" | "error";
 }
 
 const initialState: WorkflowsState = {
@@ -18,6 +19,7 @@ const initialState: WorkflowsState = {
   error: null,
   saveStatus: "idle",
   deployStatus: "idle",
+  deleteStatus: "idle",
 };
 
 export const fetchWorkflows = createAsyncThunk("workflows/fetchAll", () =>
@@ -46,9 +48,13 @@ export const deployWorkflowThunk = createAsyncThunk("workflows/deploy", (id: str
 
 export const rollbackWorkflowThunk = createAsyncThunk(
   "workflows/rollback",
-  (args: { id: string; toVersion: number }) =>
-    apiService.rollbackWorkflow(args.id, args.toVersion),
+  (args: { id: string; toVersion: number }) => apiService.rollbackWorkflow(args.id, args.toVersion),
 );
+
+export const deleteWorkflowThunk = createAsyncThunk("workflows/delete", async (id: string) => {
+  await apiService.deleteWorkflow(id);
+  return id;
+});
 
 // Merge defaults into properties so old seed nodes have all fields.
 function hydrateNode(n: WorkflowNode): WorkflowNode {
@@ -67,10 +73,7 @@ const slice = createSlice({
     clearCurrent(state) {
       state.current = null;
     },
-    addNode(
-      state,
-      action: PayloadAction<{ type: NodeType; x: number; y: number }>,
-    ) {
+    addNode(state, action: PayloadAction<{ type: NodeType; x: number; y: number }>) {
       if (!state.current) return;
       const { type, x, y } = action.payload;
       const node: WorkflowNode = {
@@ -83,10 +86,7 @@ const slice = createSlice({
       };
       state.current.nodes.push(node);
     },
-    moveNode(
-      state,
-      action: PayloadAction<{ id: string; x: number; y: number }>,
-    ) {
+    moveNode(state, action: PayloadAction<{ id: string; x: number; y: number }>) {
       if (!state.current) return;
       const n = state.current.nodes.find((x) => x.id === action.payload.id);
       if (n) {
@@ -170,6 +170,17 @@ const slice = createSlice({
     });
     b.addCase(rollbackWorkflowThunk.fulfilled, (s, a) => {
       s.current = hydrate(a.payload);
+    });
+    b.addCase(deleteWorkflowThunk.pending, (s) => {
+      s.deleteStatus = "deleting";
+    });
+    b.addCase(deleteWorkflowThunk.fulfilled, (s, a) => {
+      s.deleteStatus = "idle";
+      s.items = s.items.filter((w) => w.id !== a.payload);
+      if (s.current?.id === a.payload) s.current = null;
+    });
+    b.addCase(deleteWorkflowThunk.rejected, (s) => {
+      s.deleteStatus = "error";
     });
   },
 });

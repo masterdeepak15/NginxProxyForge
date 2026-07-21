@@ -41,6 +41,7 @@ import {
   saveWorkflowThunk,
   deployWorkflowThunk,
   rollbackWorkflowThunk,
+  deleteWorkflowThunk,
 } from "@/store/slices/workflowsSlice";
 import type { NodeType, WorkflowNode } from "@/services/api";
 import { apiService, type StatsRange } from "@/services/api";
@@ -49,6 +50,16 @@ import { canConnect, computeLabel, domainIsHttps } from "@/lib/nodeRules";
 import { PropertyPanel } from "@/components/workspace/PropertyPanel";
 import { NginxPreviewDialog } from "@/components/workspace/NginxPreviewDialog";
 import { VersionsDialog } from "@/components/workspace/VersionsDialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -103,12 +114,13 @@ function domainInputY(): number {
 // falling back to the first row.
 function domainSslRowIndex(domain: WorkflowNode, ssl: WorkflowNode): number {
   const hosts = domainHosts(domain);
-  const target = String(ssl.properties.leDomain ?? "").trim().toLowerCase();
+  const target = String(ssl.properties.leDomain ?? "")
+    .trim()
+    .toLowerCase();
   if (!target) return 0;
   const idx = hosts.findIndex((h) => h.toLowerCase() === target);
   return idx >= 0 ? idx : 0;
 }
-
 
 const nodeIcon: Record<NodeType, typeof Server> = {
   Listener: Server,
@@ -157,6 +169,7 @@ function formatCount(n: number): string {
 function WorkflowEditor() {
   const { id } = Route.useParams();
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const workflow = useAppSelector((s) => s.workflows.current);
   const saveStatus = useAppSelector((s) => s.workflows.saveStatus);
   const deployStatus = useAppSelector((s) => s.workflows.deployStatus);
@@ -173,6 +186,8 @@ function WorkflowEditor() {
   const [showStats, setShowStats] = useState(false);
   const [statsRange, setStatsRange] = useState<StatsRange>("min");
   const [nodeStats, setNodeStats] = useState<Record<string, number>>({});
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
@@ -195,6 +210,19 @@ function WorkflowEditor() {
       toast.error(err instanceof Error ? err.message : "Failed to save draft");
     }
   }, [dispatch, workflow]);
+
+  const handleDeleteWorkflow = useCallback(async () => {
+    if (!workflow) return;
+    setDeleting(true);
+    try {
+      await dispatch(deleteWorkflowThunk(workflow.id)).unwrap();
+      toast.success(`Deleted "${workflow.name}"`);
+      navigate({ to: "/workspace" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete workflow");
+      setDeleting(false);
+    }
+  }, [dispatch, workflow, navigate]);
 
   const handleDeploy = useCallback(async () => {
     if (!workflow) return;
@@ -368,7 +396,13 @@ function WorkflowEditor() {
     const type = e.dataTransfer.getData("application/x-node") as NodeType;
     if (!type) return;
     const world = toWorld(e.clientX, e.clientY);
-    dispatch(addNode({ type, x: Math.round(world.x - NODE_W / 2), y: Math.round(world.y - NODE_H_BASE / 2) }));
+    dispatch(
+      addNode({
+        type,
+        x: Math.round(world.x - NODE_W / 2),
+        y: Math.round(world.y - NODE_H_BASE / 2),
+      }),
+    );
   };
 
   // Keyboard delete
@@ -498,18 +532,42 @@ function WorkflowEditor() {
           >
             <Save className="h-4 w-4" /> {saveStatus === "saving" ? "Saving…" : "Save draft"}
           </Button>
-          <Button size="sm" disabled={hasErrors || deployStatus === "deploying"} onClick={handleDeploy}>
+          <Button
+            size="sm"
+            disabled={hasErrors || deployStatus === "deploying"}
+            onClick={handleDeploy}
+          >
             <Play className="h-4 w-4" /> {deployStatus === "deploying" ? "Deploying…" : "Deploy"}
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPanelOpen((v) => !v)} title={panelOpen ? "Hide properties" : "Show properties"}>
-            {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+          <div className="h-4 w-px bg-border" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+            title="Delete workflow"
+            aria-label="Delete workflow"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setPanelOpen((v) => !v)}
+            title={panelOpen ? "Hide properties" : "Show properties"}
+          >
+            {panelOpen ? (
+              <PanelRightClose className="h-4 w-4" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>
 
       {/* Workspace: palette + full-width canvas + slide-in property drawer */}
       <div className="relative grid flex-1 overflow-hidden grid-cols-[220px_1fr]">
-
         {/* Palette */}
         <aside className="overflow-y-auto border-r border-border/60 bg-card/30 p-3">
           <div className="mb-2 px-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
@@ -608,18 +666,13 @@ function WorkflowEditor() {
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
               transformOrigin: "0 0",
-              backgroundImage:
-                "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
+              backgroundImage: "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
               backgroundSize: "20px 20px",
               width: "4000px",
               height: "3000px",
             }}
           >
-            <svg
-              className="pointer-events-none absolute left-0 top-0"
-              width={4000}
-              height={3000}
-            >
+            <svg className="pointer-events-none absolute left-0 top-0" width={4000} height={3000}>
               {workflow.edges.map((e) => {
                 const from = workflow.nodes.find((n) => n.id === e.from);
                 const to = workflow.nodes.find((n) => n.id === e.to);
@@ -640,10 +693,7 @@ function WorkflowEditor() {
                 }
                 const x1 = from.x + NODE_W;
                 // Target Y: Domain inputs come in at the header row.
-                const y2 =
-                  to.type === "Domain"
-                    ? to.y + domainInputY()
-                    : to.y + nodeHeight(to) / 2;
+                const y2 = to.type === "Domain" ? to.y + domainInputY() : to.y + nodeHeight(to) / 2;
                 const x2 = to.x;
                 const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
                 const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
@@ -789,8 +839,7 @@ function WorkflowEditor() {
                       onPointerUp={(e) => onInputPointerUp(e, n)}
                       style={{
                         left: -HANDLE_R,
-                        top:
-                          (n.type === "Domain" ? domainInputY() : h / 2) - HANDLE_R,
+                        top: (n.type === "Domain" ? domainInputY() : h / 2) - HANDLE_R,
                         width: HANDLE_R * 2,
                         height: HANDLE_R * 2,
                       }}
@@ -802,7 +851,8 @@ function WorkflowEditor() {
                   )}
 
                   {/* Per-hostname SSL OUTPUT handles on the right of each host row (only when the domain sits behind an HTTPS listener). Dragging from here starts a Domain→SSL connection at the correct row. */}
-                  {n.type === "Domain" && httpsBehind &&
+                  {n.type === "Domain" &&
+                    httpsBehind &&
                     hosts.map((host, i) => {
                       const rowY = domainHostRowY(i);
                       return (
@@ -835,20 +885,21 @@ function WorkflowEditor() {
                       }
                       style={{
                         left: NODE_W - HANDLE_R,
-                        top:
-                          (n.type === "Domain" ? DOMAIN_HEADER_H / 2 : h / 2) -
-                          HANDLE_R,
+                        top: (n.type === "Domain" ? DOMAIN_HEADER_H / 2 : h / 2) - HANDLE_R,
                         width: HANDLE_R * 2,
                         height: HANDLE_R * 2,
                       }}
                       className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
-                      title={n.type === "Domain" ? "Connect to next node (Route/Auth/LB/…)" : "Connect to next node"}
+                      title={
+                        n.type === "Domain"
+                          ? "Connect to next node (Route/Auth/LB/…)"
+                          : "Connect to next node"
+                      }
                     />
                   )}
                 </div>
               );
             })}
-
           </div>
         </div>
 
@@ -905,18 +956,37 @@ function WorkflowEditor() {
         </aside>
       </div>
 
-
-      <NginxPreviewDialog
-        workflow={workflow}
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-      />
+      <NginxPreviewDialog workflow={workflow} open={previewOpen} onOpenChange={setPreviewOpen} />
       <VersionsDialog
         workflowId={workflow.id}
         open={versionsOpen}
         onOpenChange={setVersionsOpen}
         onRollback={handleRollback}
       />
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{workflow.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the workflow, its version history, and its deployed Nginx
+              config (if any). This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteWorkflow();
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
