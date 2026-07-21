@@ -15,8 +15,8 @@ services:
       # forced to change on first login) - fine for local testing, not for
       # anything reachable outside localhost.
       - ADMIN_EMAIL=admin@proxyforge.local
-      - ADMIN_INITIAL_PASSWORD=set-a-strong-password-here
-      - JWT_SECRET=change-me-to-a-long-random-string
+      - ADMIN_INITIAL_PASSWORD=changeme
+      - JWT_SECRET=ProxyForge_JWT_Signing_Key_2026_Secure_v1_X9kP4mL7qR2tH8nW
 
   # To build locally from source instead of pulling the registry image, swap
   # the `image:` line above for:
