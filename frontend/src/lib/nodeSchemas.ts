@@ -32,11 +32,16 @@ export interface NodeSchema {
   schema: z.ZodTypeAny;
 }
 
+// Technically RFC 1035 hostname labels only allow letters/digits/hyphens,
+// but nginx's `server_name` does not enforce that strictly, and internal
+// hostnames with underscores (e.g. "anpr_v1.example.com") are common in
+// the wild. Allow underscores alongside hyphens rather than rejecting
+// names nginx would happily serve.
 const hostname = z
   .string()
   .trim()
   .regex(
-    /^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,
+    /^(\*\.)?([a-zA-Z0-9_]([a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])?)(\.[a-zA-Z0-9_]([a-zA-Z0-9_-]{0,61}[a-zA-Z0-9_])?)*$/,
     { message: "Invalid hostname" },
   );
 

@@ -25,6 +25,7 @@ import {
   Maximize2,
   Trash2,
   Activity,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -50,6 +51,7 @@ import { canConnect, computeLabel, domainIsHttps } from "@/lib/nodeRules";
 import { PropertyPanel } from "@/components/workspace/PropertyPanel";
 import { NginxPreviewDialog } from "@/components/workspace/NginxPreviewDialog";
 import { VersionsDialog } from "@/components/workspace/VersionsDialog";
+import { RenameWorkflowDialog } from "@/components/workspace/RenameWorkflowDialog";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -188,6 +190,7 @@ function WorkflowEditor() {
   const [nodeStats, setNodeStats] = useState<Record<string, number>>({});
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const panRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(
@@ -223,6 +226,21 @@ function WorkflowEditor() {
       setDeleting(false);
     }
   }, [dispatch, workflow, navigate]);
+
+  const handleRename = useCallback(
+    async (name: string): Promise<boolean> => {
+      if (!workflow) return false;
+      try {
+        await dispatch(saveWorkflowThunk({ id: workflow.id, name })).unwrap();
+        toast.success("Workflow renamed");
+        return true;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to rename workflow");
+        return false;
+      }
+    },
+    [dispatch, workflow],
+  );
 
   const handleDeploy = useCallback(async () => {
     if (!workflow) return;
@@ -482,6 +500,16 @@ function WorkflowEditor() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold">{workflow.name}</h1>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                onClick={() => setRenameOpen(true)}
+                title="Rename workflow"
+                aria-label="Rename workflow"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
               <StatusBadge status={workflow.status} />
               <span className="text-xs text-muted-foreground">v{workflow.version}</span>
               {hasErrors && (
@@ -987,6 +1015,13 @@ function WorkflowEditor() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <RenameWorkflowDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        currentName={workflow.name}
+        onSave={handleRename}
+      />
     </div>
   );
 }

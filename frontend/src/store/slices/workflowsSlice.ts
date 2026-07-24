@@ -38,8 +38,16 @@ export const createWorkflowThunk = createAsyncThunk(
 
 export const saveWorkflowThunk = createAsyncThunk(
   "workflows/save",
-  (args: { id: string; nodes: WorkflowNode[]; edges: Workflow["edges"] }) =>
-    apiService.saveWorkflow(args.id, { nodes: args.nodes, edges: args.edges }),
+  (args: {
+    id: string;
+    nodes?: WorkflowNode[];
+    edges?: Workflow["edges"];
+    name?: string;
+    description?: string;
+  }) => {
+    const { id, ...rest } = args;
+    return apiService.saveWorkflow(id, rest);
+  },
 );
 
 export const deployWorkflowThunk = createAsyncThunk("workflows/deploy", (id: string) =>
@@ -152,7 +160,10 @@ const slice = createSlice({
     });
     b.addCase(saveWorkflowThunk.fulfilled, (s, a) => {
       s.saveStatus = "saved";
-      s.current = hydrate(a.payload);
+      // Only replace `current` if it's the workflow that was actually
+      // patched — a rename triggered from the list page shouldn't clobber
+      // whatever workflow happens to be open in the editor (or vice versa).
+      if (s.current?.id === a.payload.id) s.current = hydrate(a.payload);
       const idx = s.items.findIndex((w) => w.id === a.payload.id);
       if (idx >= 0) s.items[idx] = a.payload;
     });

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Plus, Search, Workflow as WorkflowIcon, Upload, Trash2 } from "lucide-react";
+import { Plus, Search, Workflow as WorkflowIcon, Upload, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,11 +26,13 @@ import {
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 import { StatusBadge } from "@/components/StatusBadge";
+import { RenameWorkflowDialog } from "@/components/workspace/RenameWorkflowDialog";
 import { useAppDispatch, useAppSelector } from "@/store";
 import {
   fetchWorkflows,
   createWorkflowThunk,
   deleteWorkflowThunk,
+  saveWorkflowThunk,
 } from "@/store/slices/workflowsSlice";
 import { apiService } from "@/services/api";
 
@@ -64,6 +66,8 @@ function WorkspaceIndex() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (items.length === 0) dispatch(fetchWorkflows());
@@ -199,6 +203,18 @@ function WorkspaceIndex() {
     }
   };
 
+  const handleRename = async (name: string): Promise<boolean> => {
+    if (!renameTarget) return false;
+    try {
+      await dispatch(saveWorkflowThunk({ id: renameTarget.id, name })).unwrap();
+      toast.success("Workflow renamed");
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to rename workflow");
+      return false;
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -250,6 +266,20 @@ function WorkspaceIndex() {
                   </div>
                   <div className="flex items-center gap-1">
                     <StatusBadge status={w.status} />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+                      aria-label={`Rename ${w.name}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setRenameTarget({ id: w.id, name: w.name });
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       type="button"
                       variant="ghost"
@@ -440,6 +470,13 @@ function WorkspaceIndex() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <RenameWorkflowDialog
+        open={!!renameTarget}
+        onOpenChange={(open) => !open && setRenameTarget(null)}
+        currentName={renameTarget?.name ?? ""}
+        onSave={handleRename}
+      />
     </div>
   );
 }
