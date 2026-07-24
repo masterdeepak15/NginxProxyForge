@@ -66,6 +66,23 @@ function backendScheme(b: WorkflowNode): string {
   return get<string>(b, "scheme", "http") === "https" ? "https" : "http";
 }
 
+// A proxy_pass/grpc_pass target only needs an explicit port when it isn't
+// the scheme's conventional default (http/grpc -> 80, https/grpcs -> 443).
+// Any other port must stay explicit. This intentionally does NOT apply to
+// the `server host:port;` lines inside an upstream{} block (see below) —
+// nginx defaults an omitted upstream server port to 80 regardless of the
+// scheme used in proxy_pass, so omitting it there for an https/443 backend
+// would silently break it.
+function isDefaultPort(scheme: string, port: unknown): boolean {
+  const p = Number(port);
+  if (scheme === "http" || scheme === "grpc") return p === 80;
+  if (scheme === "https" || scheme === "grpcs") return p === 443;
+  return false;
+}
+function target(scheme: string, address: unknown, port: unknown): string {
+  return isDefaultPort(scheme, port) ? `${scheme}://${address}` : `${scheme}://${address}:${port}`;
+}
+
 interface Parts {
   httpTop: string[];
   httpServers: string[];
@@ -132,7 +149,7 @@ function buildLocationContent(
     proxyTarget = `${scheme}://${upName}`;
   } else if (backends.length) {
     const b = backends[0];
-    proxyTarget = `${backendScheme(b)}://${get(b, "address")}:${get(b, "port")}`;
+    proxyTarget = target(backendScheme(b), get(b, "address"), get(b, "port"));
   }
 
   // Two access_log directives: one feeds the domain-level aggregate, one is
@@ -191,7 +208,7 @@ function buildLocationContent(
     lines.push(line(2, `grpc_read_timeout ${get(g, "readTimeout")};`));
     lines.push(line(2, `grpc_send_timeout ${get(g, "sendTimeout")};`));
     const scheme = get<boolean>(g, "tls") ? "grpcs" : "grpc";
-    lines.push(line(2, `grpc_pass ${scheme}://${get(g, "address")}:${get(g, "port")};`));
+    lines.push(line(2, `grpc_pass ${target(scheme, get(g, "address"), get(g, "port"))};`));
     lines.push(...extras(2, g));
   } else if (backends.length) {
     const first = backends[0];

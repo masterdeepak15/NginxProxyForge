@@ -20,6 +20,14 @@ export function canConnect(fromType: NodeType, toType: NodeType): boolean {
   return allowedTargets[fromType]?.includes(toType) ?? false;
 }
 
+// A displayed host:port (or scheme://host:port) only needs an explicit
+// port when it isn't the scheme's conventional default — mirrors the same
+// rule used by nginxGenerator.ts when building proxy_pass/grpc_pass.
+function isDefaultPort(https: boolean, port: unknown): boolean {
+  const p = Number(port);
+  return https ? p === 443 : p === 80;
+}
+
 // Derive a human label from node properties.
 export function computeLabel(node: WorkflowNode): string {
   const p = node.properties;
@@ -41,10 +49,17 @@ export function computeLabel(node: WorkflowNode): string {
       return String(p.path ?? "/");
     case "LB":
       return String(p.algorithm ?? "round-robin");
-    case "Backend":
-      return `${p.address ?? "backend"}:${p.port ?? ""}`;
-    case "GRPC":
-      return `${p.tls ? "grpcs" : "grpc"}://${p.address ?? ""}:${p.port ?? ""}`;
+    case "Backend": {
+      const https = p.scheme === "https";
+      const host = String(p.address ?? "backend");
+      return isDefaultPort(https, p.port) ? host : `${host}:${p.port ?? ""}`;
+    }
+    case "GRPC": {
+      const https = Boolean(p.tls);
+      const scheme = https ? "grpcs" : "grpc";
+      const host = String(p.address ?? "");
+      return isDefaultPort(https, p.port) ? `${scheme}://${host}` : `${scheme}://${host}:${p.port ?? ""}`;
+    }
     case "Auth":
       return `Auth · ${p.type ?? "none"}`;
     case "RateLimit":
