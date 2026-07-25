@@ -26,6 +26,7 @@ import {
   Trash2,
   Activity,
   Pencil,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -137,10 +138,11 @@ const nodeIcon: Record<NodeType, typeof Server> = {
   GRPC: Radio,
   TCP: Cable,
   UDP: Cable,
+  DefaultSite: FileText,
 };
 
 const paletteGroups: { label: string; items: NodeType[] }[] = [
-  { label: "Entry", items: ["Listener", "Domain", "SSL"] },
+  { label: "Entry", items: ["Listener", "Domain", "SSL", "DefaultSite"] },
   { label: "Routing", items: ["Route", "Auth", "RateLimit", "Cache"] },
   { label: "Upstream", items: ["LB", "Backend", "GRPC"] },
   { label: "L4 Stream", items: ["TCP", "UDP"] },
@@ -900,31 +902,34 @@ function WorkflowEditor() {
                       );
                     })}
 
-                  {/* Main output handle — Domain output for non-SSL targets exits from the header row; other node types use vertical middle. Backend/GRPC/SSL are terminal (no output). */}
-                  {n.type !== "Backend" && n.type !== "GRPC" && n.type !== "SSL" && (
-                    <div
-                      data-handle="out"
-                      onPointerDown={(e) =>
-                        onOutputPointerDown(
-                          e,
-                          n,
-                          n.type === "Domain" ? n.y + DOMAIN_HEADER_H / 2 : undefined,
-                        )
-                      }
-                      style={{
-                        left: NODE_W - HANDLE_R,
-                        top: (n.type === "Domain" ? DOMAIN_HEADER_H / 2 : h / 2) - HANDLE_R,
-                        width: HANDLE_R * 2,
-                        height: HANDLE_R * 2,
-                      }}
-                      className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
-                      title={
-                        n.type === "Domain"
-                          ? "Connect to next node (Route/Auth/LB/…)"
-                          : "Connect to next node"
-                      }
-                    />
-                  )}
+                  {/* Main output handle — Domain output for non-SSL targets exits from the header row; other node types use vertical middle. Backend/GRPC/SSL/DefaultSite are terminal (no output). */}
+                  {n.type !== "Backend" &&
+                    n.type !== "GRPC" &&
+                    n.type !== "SSL" &&
+                    n.type !== "DefaultSite" && (
+                      <div
+                        data-handle="out"
+                        onPointerDown={(e) =>
+                          onOutputPointerDown(
+                            e,
+                            n,
+                            n.type === "Domain" ? n.y + DOMAIN_HEADER_H / 2 : undefined,
+                          )
+                        }
+                        style={{
+                          left: NODE_W - HANDLE_R,
+                          top: (n.type === "Domain" ? DOMAIN_HEADER_H / 2 : h / 2) - HANDLE_R,
+                          width: HANDLE_R * 2,
+                          height: HANDLE_R * 2,
+                        }}
+                        className="absolute z-10 cursor-crosshair rounded-full border-2 border-primary bg-primary hover:scale-125"
+                        title={
+                          n.type === "Domain"
+                            ? "Connect to next node (Route/Auth/LB/…)"
+                            : "Connect to next node"
+                        }
+                      />
+                    )}
                 </div>
               );
             })}

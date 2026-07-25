@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -11,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Upload } from "lucide-react";
 import type { FieldMeta } from "@/lib/nodeSchemas";
 import type { HeaderEntry } from "@/lib/nodeSchemas";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,8 @@ interface Props {
 }
 
 export function FieldRenderer({ field, value, values, error, onChange }: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   if (field.showIf && !field.showIf(values)) return null;
 
   const label = (
@@ -69,7 +72,40 @@ export function FieldRenderer({ field, value, values, error, onChange }: Props) 
     case "textarea":
       return (
         <div className="space-y-1">
-          {label}
+          <div className="flex items-center justify-between">
+            <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              {field.label}
+            </Label>
+            <div className="flex items-center gap-2">
+              {error && <span className="text-[10px] text-destructive">{error}</span>}
+              {field.allowUpload && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={field.uploadAccept}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => onChange(String(reader.result ?? ""));
+                      reader.readAsText(file);
+                      e.target.value = ""; // allow re-selecting the same file later
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary"
+                  >
+                    <Upload className="h-3 w-3" />
+                    Upload file
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
           <Textarea
             value={(value as string) ?? ""}
             placeholder={field.placeholder}

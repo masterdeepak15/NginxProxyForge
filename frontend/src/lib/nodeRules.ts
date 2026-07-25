@@ -2,7 +2,7 @@ import type { NodeType, WorkflowNode, Workflow } from "@/services/api";
 
 // Allowed connections: source type -> set of target types
 export const allowedTargets: Record<NodeType, NodeType[]> = {
-  Listener: ["Domain"],
+  Listener: ["Domain", "DefaultSite"],
   Domain: ["SSL", "Route", "Auth", "RateLimit", "Cache", "LB", "Backend", "GRPC"],
   SSL: [], // SSL is only a target of Domain
   Route: ["Auth", "RateLimit", "Cache", "LB", "Backend", "GRPC"],
@@ -14,6 +14,7 @@ export const allowedTargets: Record<NodeType, NodeType[]> = {
   GRPC: [],
   TCP: ["Backend"],
   UDP: ["Backend"],
+  DefaultSite: [],
 };
 
 export function canConnect(fromType: NodeType, toType: NodeType): boolean {
@@ -70,6 +71,8 @@ export function computeLabel(node: WorkflowNode): string {
       return `TCP :${p.port ?? ""}`;
     case "UDP":
       return `UDP :${p.port ?? ""}`;
+    case "DefaultSite":
+      return `Default: ${p.mode ?? "congratulations"}`;
     default:
       return node.type;
   }

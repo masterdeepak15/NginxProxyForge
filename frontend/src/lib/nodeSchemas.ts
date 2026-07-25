@@ -21,6 +21,11 @@ export interface FieldMeta {
   min?: number;
   max?: number;
   showIf?: (values: Record<string, unknown>) => boolean;
+  /** For type "textarea": show an "Upload file" button that reads a local
+   * file's text content into this field, instead of only pasting/typing. */
+  allowUpload?: boolean;
+  /** `accept` attribute for the upload input, e.g. ".html,.htm,text/html". */
+  uploadAccept?: string;
 }
 
 export interface NodeSchema {
@@ -128,12 +133,24 @@ const Domain: NodeSchema = {
       help: "One per line. Wildcards like *.example.com are allowed.",
     },
     { key: "redirectApex", label: "Redirect apex → www", type: "switch" },
+    {
+      key: "blockExploits",
+      label: "Block common exploits",
+      type: "switch",
+      help: "Blocks common exploit probes (dotfiles, .git, wp-config.php, suspicious query strings, etc.) for this domain.",
+    },
     ...commonFields,
   ],
-  defaults: { hostnames: ["example.com"], redirectApex: false, ...commonDefaults },
+  defaults: {
+    hostnames: ["example.com"],
+    redirectApex: false,
+    blockExploits: false,
+    ...commonDefaults,
+  },
   schema: z.object({
     hostnames: z.array(hostname).min(1, "At least one hostname"),
     redirectApex: z.boolean(),
+    blockExploits: z.boolean().default(false),
     ...commonSchema,
   }),
 };
@@ -151,6 +168,12 @@ const SSL: NodeSchema = {
         { value: "shared", label: "Shared certificate" },
         { value: "per-domain", label: "Per-domain (SNI)" },
       ],
+    },
+    {
+      key: "forceSsl",
+      label: "Force SSL (redirect HTTP → HTTPS)",
+      type: "switch",
+      help: "Requires an HTTP Listener on this domain too — its traffic 301-redirects to HTTPS instead of proxying.",
     },
     { key: "leMode", label: "Use Let's Encrypt (ACME)", type: "switch" },
     {
@@ -231,6 +254,7 @@ const SSL: NodeSchema = {
   ],
   defaults: {
     mode: "shared",
+    forceSsl: false,
     leMode: false,
     leChallenge: "http-01",
     leDnsProvider: "cloudflare",
@@ -251,6 +275,7 @@ const SSL: NodeSchema = {
   },
   schema: z.object({
     mode: z.enum(["shared", "per-domain"]),
+    forceSsl: z.boolean().default(false),
     leMode: z.boolean().default(false),
     leChallenge: z.enum(["http-01", "dns-01"]).default("http-01"),
     leDnsProvider: z.string().default("cloudflare"),
@@ -494,6 +519,12 @@ const Backend: NodeSchema = {
     { key: "maxFails", label: "max_fails", type: "number", min: 0 },
     { key: "failTimeout", label: "fail_timeout", type: "text", placeholder: "10s" },
     { key: "backup", label: "Backup server", type: "switch" },
+    {
+      key: "websocket",
+      label: "WebSocket support",
+      type: "switch",
+      help: "Adds proxy_http_version 1.1 and Upgrade/Connection headers for this backend.",
+    },
     { key: "healthCheck", label: "Active health check", type: "switch" },
     { key: "healthPath", label: "Health path", type: "text", placeholder: "/healthz", showIf: (v) => Boolean(v.healthCheck) },
     { key: "connectTimeout", label: "proxy_connect_timeout", type: "text", placeholder: "5s" },
@@ -509,6 +540,7 @@ const Backend: NodeSchema = {
     maxFails: 3,
     failTimeout: "10s",
     backup: false,
+    websocket: false,
     healthCheck: false,
     healthPath: "/healthz",
     connectTimeout: "5s",
@@ -529,6 +561,7 @@ const Backend: NodeSchema = {
     maxFails: z.coerce.number().int().min(0),
     failTimeout: z.string().min(1),
     backup: z.boolean(),
+    websocket: z.boolean().default(false),
     healthCheck: z.boolean(),
     healthPath: z.string().default(""),
     connectTimeout: z.string().min(1),
@@ -636,6 +669,112 @@ const GRPC: NodeSchema = {
   }),
 };
 
+const DefaultSite: NodeSchema = {
+  type: "DefaultSite",
+  description:
+    "Catch-all `default_server` block for this Listener — what nginx serves when no Host header matches any Domain.",
+  nginxContext: "server { listen ... default_server; server_name _; ... }",
+  fields: [
+    {
+      key: "mode",
+      label: "Mode",
+      type: "select",
+      options: [
+        { value: "congratulations", label: "Congratulations page" },
+        { value: "404", label: "404 page" },
+        { value: "no-response", label: "No response (close connection)" },
+        { value: "redirect", label: "Redirect" },
+        { value: "custom", label: "Custom HTML" },
+      ],
+    },
+    {
+      key: "redirectUrl",
+      label: "Redirect URL",
+      type: "text",
+      placeholder: "https://example.com",
+      showIf: (v) => v.mode === "redirect",
+    },
+    {
+      key: "redirectCode",
+      label: "Redirect code",
+      type: "select",
+      options: [
+        { value: "301", label: "301 Permanent" },
+        { value: "302", label: "302 Temporary" },
+      ],
+      showIf: (v) => v.mode === "redirect",
+    },
+    {
+      key: "html",
+      label: "Custom HTML",
+      type: "textarea",
+      placeholder: "<html>...</html>",
+      help: "Served as-is with Content-Type: text/html. Upload an .html file, or paste/edit it directly.",
+      showIf: (v) => v.mode === "custom",
+      allowUpload: true,
+      uploadAccept: ".html,.htm,text/html",
+    },
+    ...commonFields,
+  ],
+  defaults: {
+    mode: "congratulations",
+    redirectUrl: "",
+    redirectCode: "302",
+    html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Welcome</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #e2e8f0;
+    padding: 24px;
+  }
+  .card {
+    max-width: 480px;
+    text-align: center;
+    padding: 40px 32px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  h1 { margin: 0 0 12px; font-size: 1.75rem; }
+  p { margin: 0; color: #94a3b8; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Welcome</h1>
+    <p>This site is up and running. Replace this page with your own content, or upload an HTML file.</p>
+  </div>
+</body>
+</html>
+`,
+    ...commonDefaults,
+  },
+  schema: z
+    .object({
+      mode: z.enum(["congratulations", "404", "no-response", "redirect", "custom"]),
+      redirectUrl: z.string().default(""),
+      redirectCode: z.enum(["301", "302"]).default("302"),
+      html: z.string().default(""),
+      ...commonSchema,
+    })
+    .refine((v) => v.mode !== "redirect" || Boolean(v.redirectUrl.trim()), {
+      message: "Redirect URL is required",
+      path: ["redirectUrl"],
+    }),
+};
+
 export const nodeSchemas: Record<NodeType, NodeSchema> = {
   Listener,
   Domain,
@@ -649,6 +788,7 @@ export const nodeSchemas: Record<NodeType, NodeSchema> = {
   GRPC,
   TCP,
   UDP,
+  DefaultSite,
 };
 
 export function getDefaults(type: NodeType): Record<string, unknown> {
