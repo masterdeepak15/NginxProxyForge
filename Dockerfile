@@ -44,6 +44,7 @@ COPY --from=frontend-build /app/frontend/serve.mjs    ./frontend/serve.mjs
 COPY --from=frontend-build /app/frontend/package.json ./frontend/package.json
 
 COPY docker/nginx.conf /etc/nginx/nginx.conf
+COPY docker/www/welcome/ /usr/share/proxyforge/welcome/
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && \
     mkdir -p /data && \

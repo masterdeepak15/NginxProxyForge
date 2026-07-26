@@ -1,0 +1,9 @@
+# Force LF line endings for files that run inside the Linux container,
+# regardless of the contributor's local core.autocrlf setting. Without
+# this, checking this repo out on Windows (core.autocrlf=true, the
+# default) silently converts entrypoint.sh to CRLF, which breaks its
+# shebang inside the container: "exec /app/entrypoint.sh: no such file or
+# directory" — a very confusing error for something that looks fine in an
+# editor.
+*.sh text eol=lf
+Dockerfile text eol=lf
