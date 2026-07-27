@@ -374,103 +374,9 @@ function buildDomainServer(
 // so a literal `$` in user-supplied HTML (common in inline JS) would
 // otherwise get silently substituted or blow up the config. Backslash
 // must be escaped first so the escapes added below aren't re-escaped.
-function escapeNginxDoubleQuoted(s: string): string {
+// (Also used by lib/defaultSite.ts for the Settings-level Default Site.)
+export function escapeNginxDoubleQuoted(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$");
-}
-
-const DEFAULT_SITE_CONGRATULATIONS_HTML =
-  "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Welcome</title>" +
-  "<style>body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;" +
-  "display:flex;align-items:center;justify-content:center;height:100vh;margin:0}" +
-  ".box{text-align:center}h1{font-size:1.5rem;margin-bottom:.5rem}p{color:#94a3b8}" +
-  "</style></head><body><div class='box'><h1>It works!</h1>" +
-  "<p>No site is configured for this host yet.</p></div></body></html>";
-
-const DEFAULT_SITE_404_HTML =
-  "<!DOCTYPE html><html><head><meta charset='utf-8'><title>404 Not Found</title>" +
-  "<style>body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;" +
-  "display:flex;align-items:center;justify-content:center;height:100vh;margin:0}" +
-  ".box{text-align:center}h1{font-size:2.5rem;margin-bottom:.5rem}p{color:#94a3b8}" +
-  "</style></head><body><div class='box'><h1>404</h1>" +
-  "<p>Nothing here matches that request.</p></div></body></html>";
-
-// Content for a DefaultSite's server{} block, per its `mode`. Mirrors NPM's
-// "Default Site" options (Congratulations / 404 / No Response / Redirect /
-// Custom Page).
-function defaultSiteContentLines(depth: number, node: WorkflowNode): string[] {
-  const mode = get<string>(node, "mode", "congratulations");
-  const out: string[] = [];
-  if (mode === "no-response") {
-    // nginx's dedicated "close the connection, send nothing" status.
-    out.push(line(depth, "return 444;"));
-    return out;
-  }
-  if (mode === "redirect") {
-    const code = get<string>(node, "redirectCode", "302");
-    const url = get<string>(node, "redirectUrl", "");
-    out.push(line(depth, `return ${code} "${escapeNginxDoubleQuoted(url)}";`));
-    return out;
-  }
-  out.push(line(depth, "default_type text/html;"));
-  if (mode === "404") {
-    out.push(line(depth, `return 404 "${escapeNginxDoubleQuoted(DEFAULT_SITE_404_HTML)}";`));
-  } else if (mode === "custom") {
-    out.push(line(depth, `return 200 "${escapeNginxDoubleQuoted(get<string>(node, "html", ""))}";`));
-  } else {
-    out.push(line(depth, `return 200 "${escapeNginxDoubleQuoted(DEFAULT_SITE_CONGRATULATIONS_HTML)}";`));
-  }
-  return out;
-}
-
-// A DefaultSite is a Listener's `default_server` catch-all — its own
-// server{} block, not tied to any Domain/hostname. For an https Listener
-// the TLS handshake still needs *some* certificate, so we borrow one from
-// a sibling Domain's SSL node on the same Listener if one exists.
-function buildDefaultSiteServer(wf: Workflow, listener: WorkflowNode, node: WorkflowNode): string {
-  const srv: string[] = ["server {"];
-  const isHttps = get(listener, "protocol") === "https";
-  const listenParts: string[] = [`${get(listener, "port")}`];
-  if (isHttps) listenParts.push("ssl");
-  if (get<boolean>(listener, "http2")) listenParts.push("http2");
-  listenParts.push("default_server");
-  if (get<boolean>(listener, "proxyProtocol")) listenParts.push("proxy_protocol");
-  if (get<boolean>(listener, "reuseport")) listenParts.push("reuseport");
-  srv.push(line(1, `listen ${listenParts.join(" ")};`));
-  srv.push(line(1, "server_name _;"));
-
-  if (isHttps) {
-    const siblingDomain = domainsForListener(wf, listener.id).find((d) =>
-      outgoing(wf, d.id).some((n) => n.type === "SSL"),
-    );
-    const ssl = siblingDomain ? outgoing(wf, siblingDomain.id).find((n) => n.type === "SSL") : undefined;
-    if (ssl) {
-      const isLe = Boolean(get<boolean>(ssl, "leMode"));
-      const leIssued = isLe && String(get<string>(ssl, "leStatus", "")) === "issued";
-      let certRef = "";
-      let keyRef = "";
-      if (leIssued) {
-        certRef = get<string>(ssl, "certPath", "") || "/data/certs/letsencrypt/config/live/<domain>/fullchain.pem";
-        keyRef = get<string>(ssl, "keyPath", "") || "/data/certs/letsencrypt/config/live/<domain>/privkey.pem";
-      } else if (isLe) {
-        certRef = "/data/certs/letsencrypt/config/live/<pending>/fullchain.pem";
-        keyRef = "/data/certs/letsencrypt/config/live/<pending>/privkey.pem";
-      } else {
-        certRef = `/data/certs/managed/${ssl.id}/fullchain.pem`;
-        keyRef = `/data/certs/managed/${ssl.id}/privkey.pem`;
-      }
-      srv.push(line(1, `ssl_certificate ${certRef};`));
-      srv.push(line(1, `ssl_certificate_key ${keyRef};`));
-    } else {
-      srv.push(line(1, "# No certificate available on this Listener yet — add an SSL node to a Domain here first."));
-      srv.push(line(1, `ssl_certificate /data/certs/managed/defaultsite_${node.id}/fullchain.pem;`));
-      srv.push(line(1, `ssl_certificate_key /data/certs/managed/defaultsite_${node.id}/privkey.pem;`));
-    }
-  }
-
-  srv.push(...defaultSiteContentLines(1, node));
-  srv.push(...extras(1, node));
-  srv.push("}");
-  return srv.join("\n");
 }
 
 function buildParts(workflow: Workflow): Parts {
@@ -487,10 +393,6 @@ function buildParts(workflow: Workflow): Parts {
       const { serverBlock, topLevel } = buildDomainServer(workflow, listener, domain);
       httpTop.push(...topLevel);
       httpServers.push(serverBlock);
-    }
-    const defaultSite = outgoing(workflow, listener.id).find((n) => n.type === "DefaultSite");
-    if (defaultSite) {
-      httpServers.push(buildDefaultSiteServer(workflow, listener, defaultSite));
     }
   }
 

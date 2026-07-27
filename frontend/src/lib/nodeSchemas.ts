@@ -669,58 +669,61 @@ const GRPC: NodeSchema = {
   }),
 };
 
-const DefaultSite: NodeSchema = {
-  type: "DefaultSite",
-  description:
-    "Catch-all `default_server` block for this Listener — what nginx serves when no Host header matches any Domain.",
-  nginxContext: "server { listen ... default_server; server_name _; ... }",
-  fields: [
-    {
-      key: "mode",
-      label: "Mode",
-      type: "select",
-      options: [
-        { value: "congratulations", label: "Congratulations page" },
-        { value: "404", label: "404 page" },
-        { value: "no-response", label: "No response (close connection)" },
-        { value: "redirect", label: "Redirect" },
-        { value: "custom", label: "Custom HTML" },
-      ],
-    },
-    {
-      key: "redirectUrl",
-      label: "Redirect URL",
-      type: "text",
-      placeholder: "https://example.com",
-      showIf: (v) => v.mode === "redirect",
-    },
-    {
-      key: "redirectCode",
-      label: "Redirect code",
-      type: "select",
-      options: [
-        { value: "301", label: "301 Permanent" },
-        { value: "302", label: "302 Temporary" },
-      ],
-      showIf: (v) => v.mode === "redirect",
-    },
-    {
-      key: "html",
-      label: "Custom HTML",
-      type: "textarea",
-      placeholder: "<html>...</html>",
-      help: "Served as-is with Content-Type: text/html. Upload an .html file, or paste/edit it directly.",
-      showIf: (v) => v.mode === "custom",
-      allowUpload: true,
-      uploadAccept: ".html,.htm,text/html",
-    },
-    ...commonFields,
-  ],
-  defaults: {
-    mode: "congratulations",
-    redirectUrl: "",
-    redirectCode: "302",
-    html: `<!DOCTYPE html>
+// ---------------- Default Site (Settings-level, not a workflow node) ----------------
+// Nginx only allows one `default_server` per address:port, and ProxyForge's
+// base nginx.conf already owns that fallback for :80/:443 (see
+// docker/nginx.conf). Modeling it as a draggable per-Listener node made it
+// possible to create a real conflict (two default_server blocks on the
+// same port), so this content model lives here as a single global setting
+// instead — same fields/behavior, just not a graph node. Configured from
+// the Settings page; see backend/src/lib/defaultSite.ts for generation.
+export const defaultSiteFields: FieldMeta[] = [
+  {
+    key: "mode",
+    label: "Mode",
+    type: "select",
+    options: [
+      { value: "congratulations", label: "Congratulations page" },
+      { value: "404", label: "404 page" },
+      { value: "no-response", label: "No response (close connection)" },
+      { value: "redirect", label: "Redirect" },
+      { value: "custom", label: "Custom HTML" },
+    ],
+  },
+  {
+    key: "redirectUrl",
+    label: "Redirect URL",
+    type: "text",
+    placeholder: "https://example.com",
+    showIf: (v) => v.mode === "redirect",
+  },
+  {
+    key: "redirectCode",
+    label: "Redirect code",
+    type: "select",
+    options: [
+      { value: "301", label: "301 Permanent" },
+      { value: "302", label: "302 Temporary" },
+    ],
+    showIf: (v) => v.mode === "redirect",
+  },
+  {
+    key: "html",
+    label: "Custom HTML",
+    type: "textarea",
+    placeholder: "<html>...</html>",
+    help: "Served as-is with Content-Type: text/html. Upload an .html file, or paste/edit it directly.",
+    showIf: (v) => v.mode === "custom",
+    allowUpload: true,
+    uploadAccept: ".html,.htm,text/html",
+  },
+];
+
+export const defaultSiteDefaults = {
+  mode: "congratulations" as const,
+  redirectUrl: "",
+  redirectCode: "302" as const,
+  html: `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -759,21 +762,32 @@ const DefaultSite: NodeSchema = {
 </body>
 </html>
 `,
-    ...commonDefaults,
-  },
-  schema: z
-    .object({
-      mode: z.enum(["congratulations", "404", "no-response", "redirect", "custom"]),
-      redirectUrl: z.string().default(""),
-      redirectCode: z.enum(["301", "302"]).default("302"),
-      html: z.string().default(""),
-      ...commonSchema,
-    })
-    .refine((v) => v.mode !== "redirect" || Boolean(v.redirectUrl.trim()), {
-      message: "Redirect URL is required",
-      path: ["redirectUrl"],
-    }),
 };
+
+export const defaultSiteSchema = z
+  .object({
+    mode: z.enum(["congratulations", "404", "no-response", "redirect", "custom"]),
+    redirectUrl: z.string().default(""),
+    redirectCode: z.enum(["301", "302"]).default("302"),
+    html: z.string().default(""),
+  })
+  .refine((v) => v.mode !== "redirect" || Boolean(v.redirectUrl.trim()), {
+    message: "Redirect URL is required",
+    path: ["redirectUrl"],
+  });
+
+export function validateDefaultSite(
+  properties: Record<string, unknown>,
+): { ok: true } | { ok: false; errors: Record<string, string> } {
+  const res = defaultSiteSchema.safeParse(properties);
+  if (res.success) return { ok: true };
+  const errors: Record<string, string> = {};
+  for (const issue of res.error.issues) {
+    const key = issue.path[0]?.toString() ?? "_";
+    if (!errors[key]) errors[key] = issue.message;
+  }
+  return { ok: false, errors };
+}
 
 export const nodeSchemas: Record<NodeType, NodeSchema> = {
   Listener,
@@ -788,7 +802,6 @@ export const nodeSchemas: Record<NodeType, NodeSchema> = {
   GRPC,
   TCP,
   UDP,
-  DefaultSite,
 };
 
 export function getDefaults(type: NodeType): Record<string, unknown> {

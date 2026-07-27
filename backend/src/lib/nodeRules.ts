@@ -3,7 +3,7 @@ import type { NodeType, WorkflowNode, Workflow } from "../types";
 // Allowed connections: source type -> set of target types
 // Mirrors frontend src/lib/nodeRules.ts — keep in sync.
 export const allowedTargets: Record<NodeType, NodeType[]> = {
-  Listener: ["Domain", "DefaultSite"],
+  Listener: ["Domain"],
   Domain: ["SSL", "Route", "Auth", "RateLimit", "Cache", "LB", "Backend", "GRPC"],
   SSL: [],
   Route: ["Auth", "RateLimit", "Cache", "LB", "Backend", "GRPC"],
@@ -15,7 +15,6 @@ export const allowedTargets: Record<NodeType, NodeType[]> = {
   GRPC: [],
   TCP: ["Backend"],
   UDP: ["Backend"],
-  DefaultSite: [],
 };
 
 export function canConnect(fromType: NodeType, toType: NodeType): boolean {
@@ -47,21 +46,6 @@ export function validateTopology(wf: Workflow): Array<{ nodeId: string; message:
     if (["Listener", "TCP", "UDP"].includes(n.type)) continue;
     if (!hasInbound.has(n.id)) {
       errors.push({ nodeId: n.id, message: `${n.type} node is not connected to anything upstream` });
-    }
-  }
-
-  // At most one DefaultSite per Listener — nginx rejects a second
-  // `default_server` on the same address:port.
-  for (const n of wf.nodes) {
-    if (n.type !== "Listener") continue;
-    const defaultSites = wf.edges
-      .filter((e) => e.from === n.id)
-      .map((e) => nodeById.get(e.to))
-      .filter((t): t is WorkflowNode => t?.type === "DefaultSite");
-    if (defaultSites.length > 1) {
-      for (const d of defaultSites.slice(1)) {
-        errors.push({ nodeId: d.id, message: "Only one Default Site is allowed per Listener" });
-      }
     }
   }
 

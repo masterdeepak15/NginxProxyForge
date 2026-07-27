@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,8 @@ import { useAppDispatch, useAppSelector } from "@/store";
 import { toggleTheme } from "@/store/slices/themeSlice";
 import { hydrateAuth } from "@/store/slices/authSlice";
 import { apiService } from "@/services/api";
+import { FieldRenderer } from "@/components/workspace/FieldRenderer";
+import { defaultSiteFields, defaultSiteDefaults, validateDefaultSite } from "@/lib/nodeSchemas";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -34,6 +36,24 @@ function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+
+  const [defaultSite, setDefaultSite] = useState<Record<string, unknown>>(defaultSiteDefaults);
+  const [defaultSiteErrors, setDefaultSiteErrors] = useState<Record<string, string>>({});
+  const [savingDefaultSite, setSavingDefaultSite] = useState(false);
+  const [loadingDefaultSite, setLoadingDefaultSite] = useState(true);
+
+  useEffect(() => {
+    apiService
+      .getSettings()
+      .then((s) => {
+        const saved = s.defaultSite as Record<string, unknown> | undefined;
+        if (saved) setDefaultSite({ ...defaultSiteDefaults, ...saved });
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : "Failed to load Default Site settings");
+      })
+      .finally(() => setLoadingDefaultSite(false));
+  }, []);
 
   const saveProfile = async () => {
     setSavingProfile(true);
@@ -67,6 +87,29 @@ function SettingsPage() {
       toast.error(err instanceof Error ? err.message : "Failed to update password");
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const saveDefaultSite = async () => {
+    const result = validateDefaultSite(defaultSite);
+    if (!result.ok) {
+      setDefaultSiteErrors(result.errors);
+      toast.error("Fix the highlighted field before saving");
+      return;
+    }
+    setDefaultSiteErrors({});
+    setSavingDefaultSite(true);
+    try {
+      const res = await apiService.updateSettings({ defaultSite });
+      if ((res as { warning?: string }).warning) {
+        toast.warning((res as { warning?: string }).warning as string);
+      } else {
+        toast.success("Default Site updated");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update Default Site");
+    } finally {
+      setSavingDefaultSite(false);
     }
   };
 
@@ -107,7 +150,11 @@ function SettingsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>New password</Label>
-            <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
             <Label>Confirm password</Label>
@@ -130,14 +177,40 @@ function SettingsPage() {
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm">Dark mode</div>
-            <div className="text-xs text-muted-foreground">
-              Current: {theme}
-            </div>
+            <div className="text-xs text-muted-foreground">Current: {theme}</div>
           </div>
-          <Switch
-            checked={theme === "dark"}
-            onCheckedChange={() => dispatch(toggleTheme())}
-          />
+          <Switch checked={theme === "dark"} onCheckedChange={() => dispatch(toggleTheme())} />
+        </div>
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <div>
+          <div className="text-sm font-medium">Default Site</div>
+          <p className="text-xs text-muted-foreground">
+            What nginx serves on ports 80/443 when a request's Host header doesn't match any
+            deployed domain.
+          </p>
+        </div>
+        <div className="space-y-4">
+          {defaultSiteFields.map((field) => (
+            <FieldRenderer
+              key={field.key}
+              field={field}
+              value={defaultSite[field.key]}
+              values={defaultSite}
+              error={defaultSiteErrors[field.key]}
+              onChange={(v) => setDefaultSite((prev) => ({ ...prev, [field.key]: v }))}
+            />
+          ))}
+        </div>
+        <div>
+          <Button
+            size="sm"
+            onClick={saveDefaultSite}
+            disabled={savingDefaultSite || loadingDefaultSite}
+          >
+            {savingDefaultSite ? "Saving…" : "Save changes"}
+          </Button>
         </div>
       </Card>
 

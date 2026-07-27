@@ -10,8 +10,7 @@ export type NodeType =
   | "Backend"
   | "GRPC"
   | "TCP"
-  | "UDP"
-  | "DefaultSite";
+  | "UDP";
 
 export interface WorkflowNode {
   id: string;

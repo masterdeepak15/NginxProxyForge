@@ -11,6 +11,7 @@ import { logsRouter } from "./routes/logs";
 import { settingsRouter } from "./routes/settings";
 import { startNginx, reloadNginx } from "./nginx/processManager";
 import { renewAllCertificates } from "./nginx/certbot";
+import { syncDefaultSiteConf } from "./lib/defaultSite";
 import { addLog } from "./logs";
 
 const app = express();
@@ -39,6 +40,13 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 void db; // ensure db module (and its first-boot seeding) is initialized
+
+// The base nginx.conf's fallback server{} block on :80 unconditionally
+// `include`s this generated file (see docker/nginx.conf) — it must exist
+// before nginx starts, even on a completely fresh /data volume, or nginx
+// fails to boot entirely. Always resyncs from the DB (the source of
+// truth), not just "if missing".
+syncDefaultSiteConf();
 
 // This process is PID 1 inside the container (see docker/entrypoint.sh) and
 // owns the real nginx binary as a child process: starts it, validates every
