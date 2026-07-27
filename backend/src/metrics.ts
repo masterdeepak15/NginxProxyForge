@@ -198,6 +198,66 @@ function percentile(values: number[], p: number): number {
   return sorted[idx];
 }
 
+const DOMAIN_FILE_RE = /^wf_(.+?)__listener_(.+?)__domain_(.+?)\.access\.log$/;
+
+export interface DomainStat {
+  domain: string;
+  workflowId: string;
+  workflowName: string;
+  requests: number;
+  errors: number;
+}
+
+/**
+ * Aggregates every deployed Domain's access log (each domain already gets
+ * its own log file - see graphScope.ts's domainLogFile) into per-domain
+ * request/error totals, resolving the log filename's embedded IDs back to
+ * a real hostname + workflow name by loading the owning workflow. "Errors"
+ * uses the same >=500 threshold as getTrafficSeries/getStats above, for
+ * consistency with the rest of the Metrics UI.
+ */
+export function getDomainStats(
+  range: "1h" | "24h" | "7d" | "30d",
+  limit = 10,
+): { topByRequests: DomainStat[]; topByErrors: DomainStat[] } {
+  const windowMs: Record<string, number> = {
+    "1h": 3_600_000,
+    "24h": 86_400_000,
+    "7d": 7 * 86_400_000,
+    "30d": 30 * 86_400_000,
+  };
+  const since = Date.now() - windowMs[range];
+  const files = listAllAccessLogFiles();
+  const workflows = loadAllWorkflows();
+  const wfById = new Map(workflows.map((w) => [w.id, w]));
+
+  const stats: DomainStat[] = [];
+  for (const file of files) {
+    const m = DOMAIN_FILE_RE.exec(file);
+    if (!m) continue;
+    const [, workflowId, , domainId] = m;
+    const wf = wfById.get(workflowId);
+    if (!wf) continue;
+    const domainNode = wf.nodes.find((n) => n.id === domainId && n.type === "Domain");
+    if (!domainNode) continue;
+    const hostnames = (domainNode.properties as Record<string, unknown>).hostnames as string[] | undefined;
+    const domainLabel = hostnames?.[0] || domainId;
+
+    const entries = tailParse(file, since);
+    if (!entries.length) continue;
+    const errors = entries.filter((e) => e.status >= 500).length;
+    stats.push({ domain: domainLabel, workflowId: wf.id, workflowName: wf.name, requests: entries.length, errors });
+  }
+
+  const topByRequests = [...stats].sort((a, b) => b.requests - a.requests).slice(0, limit);
+  const topByErrors = [...stats]
+    .filter((s) => s.errors > 0)
+    .sort((a, b) => b.errors - a.errors)
+    .slice(0, limit);
+
+  return { topByRequests, topByErrors };
+}
+
 /**
  * Real per-node request counts. A Listener's count is the sum of all its
  * Domains; a Domain's count is every request that hit that server block

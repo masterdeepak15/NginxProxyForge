@@ -149,14 +149,20 @@ const get = <T>(path: string, query?: Record<string, string | number | undefined
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined });
 const patch = <T>(path: string, body?: unknown) =>
-  request<T>(path, { method: "PATCH", body: body !== undefined ? JSON.stringify(body) : undefined });
+  request<T>(path, {
+    method: "PATCH",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 // ---------- API surface ----------
 
 export const apiService = {
   // Auth
-  async login(email: string, password: string): Promise<{ user: User; token: string; mustChangePassword: boolean }> {
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ user: User; token: string; mustChangePassword: boolean }> {
     return post("/auth/login", { email, password });
   },
   async logout(): Promise<{ ok: true }> {
@@ -189,7 +195,10 @@ export const apiService = {
   ): Promise<{ workflow: Workflow; warnings: string[] }> {
     return post("/workflows/import", { name, description, config });
   },
-  async saveWorkflow(id: string, patchBody: Partial<Workflow> & { message?: string }): Promise<Workflow> {
+  async saveWorkflow(
+    id: string,
+    patchBody: Partial<Workflow> & { message?: string },
+  ): Promise<Workflow> {
     return patch(`/workflows/${id}`, patchBody);
   },
   async deleteWorkflow(id: string): Promise<void> {
@@ -216,7 +225,11 @@ export const apiService = {
   },
 
   // Deployments
-  async listDeployments(filters?: { workflowId?: string; status?: string; limit?: number }): Promise<Deployment[]> {
+  async listDeployments(filters?: {
+    workflowId?: string;
+    status?: string;
+    limit?: number;
+  }): Promise<Deployment[]> {
     return get("/deployments", filters as Record<string, string | number | undefined>);
   },
   async getDeployment(id: string): Promise<Deployment> {
@@ -238,9 +251,7 @@ export const apiService = {
   }): Promise<{ jobId: string }> {
     return post("/certificates/lets-encrypt", params);
   },
-  async getLetsEncryptJob(
-    jobId: string,
-  ): Promise<{
+  async getLetsEncryptJob(jobId: string): Promise<{
     status: "pending" | "issued" | "error";
     error?: string;
     certificateId?: string;
@@ -250,7 +261,11 @@ export const apiService = {
   }> {
     return get(`/certificates/lets-encrypt/${jobId}`);
   },
-  async uploadCertificate(params: { domain: string; certPem: string; keyPem: string }): Promise<Certificate> {
+  async uploadCertificate(params: {
+    domain: string;
+    certPem: string;
+    keyPem: string;
+  }): Promise<Certificate> {
     return post("/certificates", params);
   },
   async deleteCertificate(id: string): Promise<void> {
@@ -258,7 +273,10 @@ export const apiService = {
   },
 
   // Metrics
-  async getMetrics(range: "1h" | "24h" | "7d" | "30d" = "24h", workflowId?: string): Promise<MetricPoint[]> {
+  async getMetrics(
+    range: "1h" | "24h" | "7d" | "30d" = "24h",
+    workflowId?: string,
+  ): Promise<MetricPoint[]> {
     return get("/metrics/traffic", { range, workflowId });
   },
   async getStats() {
@@ -274,6 +292,27 @@ export const apiService = {
       p95Latency: number;
     }>("/metrics/stats");
   },
+  async getDomainStats(
+    range: "1h" | "24h" | "7d" | "30d" = "24h",
+    limit = 10,
+  ): Promise<{
+    topByRequests: {
+      domain: string;
+      workflowId: string;
+      workflowName: string;
+      requests: number;
+      errors: number;
+    }[];
+    topByErrors: {
+      domain: string;
+      workflowId: string;
+      workflowName: string;
+      requests: number;
+      errors: number;
+    }[];
+  }> {
+    return get("/metrics/domains", { range, limit });
+  },
   async getNodeStats(nodeId: string, range: StatsRange): Promise<NodeStats> {
     return get(`/metrics/nodes/${nodeId}`, { range });
   },
@@ -285,7 +324,9 @@ export const apiService = {
     limit?: number;
     from?: string;
     to?: string;
-  }): Promise<Array<{ ts: string; level: "info" | "warn" | "error"; workflowId?: string; message: string }>> {
+  }): Promise<
+    Array<{ ts: string; level: "info" | "warn" | "error"; workflowId?: string; message: string }>
+  > {
     return get("/logs", filters as Record<string, string | number | undefined>);
   },
 

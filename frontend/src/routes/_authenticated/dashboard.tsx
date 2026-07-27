@@ -13,6 +13,8 @@ import {
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -45,19 +47,38 @@ function DashboardPage() {
   const deployments = useAppSelector((s) => s.deployments.items);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof apiService.getStats>> | null>(null);
   const [metrics, setMetrics] = useState<MetricPoint[]>([]);
+  const [domainStats, setDomainStats] = useState<Awaited<
+    ReturnType<typeof apiService.getDomainStats>
+  > | null>(null);
 
   useEffect(() => {
     dispatch(fetchWorkflows());
     dispatch(fetchDeployments());
     apiService.getStats().then(setStats);
     apiService.getMetrics().then(setMetrics);
+    apiService.getDomainStats().then(setDomainStats);
   }, [dispatch]);
 
   const kpis = [
-    { label: "Workflows", value: stats?.totalWorkflows ?? "—", icon: WorkflowIcon, hint: `${stats?.deployed ?? 0} deployed` },
+    {
+      label: "Workflows",
+      value: stats?.totalWorkflows ?? "—",
+      icon: WorkflowIcon,
+      hint: `${stats?.deployed ?? 0} deployed`,
+    },
     { label: "Domains", value: stats?.totalDomains ?? "—", icon: Globe, hint: "Across all edges" },
-    { label: "Requests / sec", value: stats?.requestsPerSec.toLocaleString() ?? "—", icon: Activity, hint: "Live" },
-    { label: "P95 Latency", value: stats ? `${stats.p95Latency} ms` : "—", icon: TrendingUp, hint: "Last 5 min" },
+    {
+      label: "Requests / sec",
+      value: stats?.requestsPerSec.toLocaleString() ?? "—",
+      icon: Activity,
+      hint: "Live",
+    },
+    {
+      label: "P95 Latency",
+      value: stats ? `${stats.p95Latency} ms` : "—",
+      icon: TrendingUp,
+      hint: "Last 5 min",
+    },
   ];
 
   return (
@@ -107,9 +128,7 @@ function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-medium">Traffic</div>
-              <div className="text-xs text-muted-foreground">
-                Requests per hour · last 24h
-              </div>
+              <div className="text-xs text-muted-foreground">Requests per hour · last 24h</div>
             </div>
             <div className="text-xs text-emerald-500 flex items-center gap-1">
               <ArrowUpRight className="h-3 w-3" /> +12.4%
@@ -124,9 +143,24 @@ function DashboardPage() {
                     <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="time" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+                <CartesianGrid
+                  stroke="var(--color-border)"
+                  strokeDasharray="3 3"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="time"
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--color-popover)",
@@ -135,7 +169,13 @@ function DashboardPage() {
                     fontSize: 12,
                   }}
                 />
-                <Area type="monotone" dataKey="requests" stroke="var(--color-primary)" fill="url(#fill1)" strokeWidth={2} />
+                <Area
+                  type="monotone"
+                  dataKey="requests"
+                  stroke="var(--color-primary)"
+                  fill="url(#fill1)"
+                  strokeWidth={2}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -147,9 +187,24 @@ function DashboardPage() {
           <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={metrics}>
-                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="time" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+                <CartesianGrid
+                  stroke="var(--color-border)"
+                  strokeDasharray="3 3"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="time"
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--color-popover)",
@@ -158,10 +213,117 @@ function DashboardPage() {
                     fontSize: 12,
                   }}
                 />
-                <Line type="monotone" dataKey="latencyMs" stroke="var(--color-chart-2)" strokeWidth={2} dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="latencyMs"
+                  stroke="var(--color-chart-2)"
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
+        </Card>
+      </div>
+
+      {/* Domain requests */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="text-sm font-medium">Top domains by traffic</div>
+          <div className="text-xs text-muted-foreground">Requests · last 24h</div>
+          <div className="mt-4 h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={domainStats?.topByRequests ?? []}
+                layout="vertical"
+                margin={{ left: 8 }}
+              >
+                <CartesianGrid
+                  stroke="var(--color-border)"
+                  strokeDasharray="3 3"
+                  horizontal={false}
+                />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="domain"
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  width={140}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--color-popover)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar dataKey="requests" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {domainStats && domainStats.topByRequests.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">No traffic recorded yet.</p>
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <div className="text-sm font-medium">Top domains by errors</div>
+          <div className="text-xs text-muted-foreground">5xx responses · last 24h</div>
+          <div className="mt-4 h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={domainStats?.topByErrors ?? []}
+                layout="vertical"
+                margin={{ left: 8 }}
+              >
+                <CartesianGrid
+                  stroke="var(--color-border)"
+                  strokeDasharray="3 3"
+                  horizontal={false}
+                />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="domain"
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  width={140}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--color-popover)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <Bar dataKey="errors" fill="var(--color-destructive)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {domainStats && domainStats.topByErrors.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">No errors in this window.</p>
+          )}
         </Card>
       </div>
 
@@ -184,9 +346,7 @@ function DashboardPage() {
               >
                 <div>
                   <div className="text-sm font-medium">{w.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {w.domains.join(", ")}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{w.domains.join(", ")}</div>
                 </div>
                 <StatusBadge status={w.status} />
               </Link>
@@ -214,8 +374,7 @@ function DashboardPage() {
                   />
                   <div>
                     <div className="text-sm font-medium">
-                      {d.workflowName}{" "}
-                      <span className="text-muted-foreground">v{d.version}</span>
+                      {d.workflowName} <span className="text-muted-foreground">v{d.version}</span>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {d.author} · {new Date(d.timestamp).toLocaleString()}
