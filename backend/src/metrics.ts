@@ -258,6 +258,95 @@ export function getDomainStats(
   return { topByRequests, topByErrors };
 }
 
+const DOMAIN_ERROR_FILE_RE = /^wf_(.+?)__listener_(.+?)__domain_(.+?)\.error\.log$/;
+
+// nginx error_log format:
+// <ts> [<level>] <pid>#<tid>: *<cid> <message>, client: <ip>, server: <name>,
+// request: "<line>", upstream: "<url>", host: "<host>"
+// The context fields after <message> are all individually optional — which
+// ones appear depends on the kind of error (e.g. an SSL handshake failure
+// has no "request:"/"upstream:" since nginx never got that far).
+const ERROR_LINE_RE =
+  /^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \d+#\d+: (?:\*\d+ )?(.+?)(?:, client: (\S+))?(?:, server: (\S*))?(?:, request: "([^"]*)")?(?:, upstream: "([^"]*)")?(?:, host: "([^"]*)")?$/;
+
+export interface ErrorEntry {
+  time: string;
+  level: string;
+  type: string;
+  domain: string;
+  workflowId: string;
+  workflowName: string;
+  client: string | null;
+  request: string | null;
+  upstream: string | null;
+}
+
+function listAllErrorLogFiles(): string[] {
+  if (!fs.existsSync(LOG_DIR)) return [];
+  return fs.readdirSync(LOG_DIR).filter((f) => f.endsWith(".error.log"));
+}
+
+/**
+ * Parses the real nginx error log (already being written per-domain, see
+ * domainErrorLogFile in graphScope.ts / nginxGenerator.ts's `error_log`
+ * directive) into structured entries with the actual failure type
+ * ("connect() failed (111: Connection refused)...", "upstream timed
+ * out...", etc.), which domain it came from, and where it originated
+ * (client IP / upstream target) — replacing the previous "errors" signal,
+ * which was just a count of >=500 access-log responses with no detail on
+ * why. Most recent first.
+ */
+export function getRecentErrors(range: "1h" | "24h" | "7d" | "30d", limit = 50): ErrorEntry[] {
+  const windowMs: Record<string, number> = {
+    "1h": 3_600_000,
+    "24h": 86_400_000,
+    "7d": 7 * 86_400_000,
+    "30d": 30 * 86_400_000,
+  };
+  const since = Date.now() - windowMs[range];
+  const files = listAllErrorLogFiles();
+  const workflows = loadAllWorkflows();
+  const wfById = new Map(workflows.map((w) => [w.id, w]));
+
+  const entries: ErrorEntry[] = [];
+  for (const file of files) {
+    const m = DOMAIN_ERROR_FILE_RE.exec(file);
+    if (!m) continue;
+    const [, workflowId, , domainId] = m;
+    const wf = wfById.get(workflowId);
+    if (!wf) continue;
+    const domainNode = wf.nodes.find((n) => n.id === domainId && n.type === "Domain");
+    const hostnames = domainNode
+      ? ((domainNode.properties as Record<string, unknown>).hostnames as string[] | undefined)
+      : undefined;
+    const domainLabel = hostnames?.[0] || domainId;
+
+    const full = path.join(LOG_DIR, file);
+    if (!fs.existsSync(full)) continue;
+    const lines = fs.readFileSync(full, "utf8").split("\n").slice(-2000);
+    for (const l of lines) {
+      const em = ERROR_LINE_RE.exec(l);
+      if (!em) continue;
+      const t = new Date(em[1].replace(/^(\d+)\/(\d+)\/(\d+)/, "$1-$2-$3").replace(" ", "T"));
+      if (isNaN(t.getTime()) || t.getTime() < since) continue;
+      entries.push({
+        time: t.toISOString(),
+        level: em[2],
+        type: em[3].trim(),
+        domain: domainLabel,
+        workflowId: wf.id,
+        workflowName: wf.name,
+        client: em[4] || null,
+        request: em[6] || null,
+        upstream: em[7] || null,
+      });
+    }
+  }
+
+  entries.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  return entries.slice(0, limit);
+}
+
 /**
  * Real per-node request counts. A Listener's count is the sum of all its
  * Domains; a Domain's count is every request that hit that server block

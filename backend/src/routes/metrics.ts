@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { getTrafficSeries, getStats, getNodeStats, getDomainStats } from "../metrics";
+import { getTrafficSeries, getStats, getNodeStats, getDomainStats, getRecentErrors } from "../metrics";
 
 export const metricsRouter = Router();
 metricsRouter.use(requireAuth);
@@ -15,6 +15,12 @@ metricsRouter.get("/domains", (req, res) => {
   const range = (req.query.range as any) || "24h";
   const limit = req.query.limit ? Number(req.query.limit) : 10;
   res.json(getDomainStats(range, limit));
+});
+
+metricsRouter.get("/errors", (req, res) => {
+  const range = (req.query.range as any) || "24h";
+  const limit = req.query.limit ? Number(req.query.limit) : 50;
+  res.json(getRecentErrors(range, limit));
 });
 
 metricsRouter.get("/stats", (_req, res) => {

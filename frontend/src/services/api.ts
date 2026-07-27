@@ -313,6 +313,24 @@ export const apiService = {
   }> {
     return get("/metrics/domains", { range, limit });
   },
+  async getRecentErrors(
+    range: "1h" | "24h" | "7d" | "30d" = "24h",
+    limit = 50,
+  ): Promise<
+    {
+      time: string;
+      level: string;
+      type: string;
+      domain: string;
+      workflowId: string;
+      workflowName: string;
+      client: string | null;
+      request: string | null;
+      upstream: string | null;
+    }[]
+  > {
+    return get("/metrics/errors", { range, limit });
+  },
   async getNodeStats(nodeId: string, range: StatsRange): Promise<NodeStats> {
     return get(`/metrics/nodes/${nodeId}`, { range });
   },
