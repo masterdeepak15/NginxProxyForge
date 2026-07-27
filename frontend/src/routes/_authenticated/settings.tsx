@@ -42,17 +42,26 @@ function SettingsPage() {
   const [savingDefaultSite, setSavingDefaultSite] = useState(false);
   const [loadingDefaultSite, setLoadingDefaultSite] = useState(true);
 
+  const [retentionDays, setRetentionDays] = useState(30);
+  const [savingRetention, setSavingRetention] = useState(false);
+  const [loadingRetention, setLoadingRetention] = useState(true);
+
   useEffect(() => {
     apiService
       .getSettings()
       .then((s) => {
         const saved = s.defaultSite as Record<string, unknown> | undefined;
         if (saved) setDefaultSite({ ...defaultSiteDefaults, ...saved });
+        const retention = s.retention as { days?: number } | undefined;
+        if (retention?.days) setRetentionDays(retention.days);
       })
       .catch((err) => {
-        toast.error(err instanceof Error ? err.message : "Failed to load Default Site settings");
+        toast.error(err instanceof Error ? err.message : "Failed to load settings");
       })
-      .finally(() => setLoadingDefaultSite(false));
+      .finally(() => {
+        setLoadingDefaultSite(false);
+        setLoadingRetention(false);
+      });
   }, []);
 
   const saveProfile = async () => {
@@ -110,6 +119,22 @@ function SettingsPage() {
       toast.error(err instanceof Error ? err.message : "Failed to update Default Site");
     } finally {
       setSavingDefaultSite(false);
+    }
+  };
+
+  const saveRetention = async () => {
+    if (!Number.isFinite(retentionDays) || retentionDays < 1 || retentionDays > 3650) {
+      toast.error("Retention must be between 1 and 3650 days");
+      return;
+    }
+    setSavingRetention(true);
+    try {
+      await apiService.updateSettings({ retention: { days: retentionDays } });
+      toast.success("Retention settings updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update retention settings");
+    } finally {
+      setSavingRetention(false);
     }
   };
 
@@ -210,6 +235,31 @@ function SettingsPage() {
             disabled={savingDefaultSite || loadingDefaultSite}
           >
             {savingDefaultSite ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <div>
+          <div className="text-sm font-medium">Log & Cache Retention</div>
+          <p className="text-xs text-muted-foreground">
+            Access/error logs, activity log entries, and stale nginx proxy cache files older than
+            this are deleted automatically, once a day.
+          </p>
+        </div>
+        <div className="max-w-xs space-y-2">
+          <Label>Retention period (days)</Label>
+          <Input
+            type="number"
+            min={1}
+            max={3650}
+            value={retentionDays}
+            onChange={(e) => setRetentionDays(Number(e.target.value))}
+          />
+        </div>
+        <div>
+          <Button size="sm" onClick={saveRetention} disabled={savingRetention || loadingRetention}>
+            {savingRetention ? "Saving…" : "Save changes"}
           </Button>
         </div>
       </Card>

@@ -12,6 +12,7 @@ import { settingsRouter } from "./routes/settings";
 import { startNginx, reloadNginx } from "./nginx/processManager";
 import { renewAllCertificates } from "./nginx/certbot";
 import { syncDefaultSiteConf } from "./lib/defaultSite";
+import { runRetentionCleanup } from "./lib/retention";
 import { addLog } from "./logs";
 
 const app = express();
@@ -74,6 +75,21 @@ async function runRenewalCheck() {
 }
 setTimeout(runRenewalCheck, 60_000);
 setInterval(runRenewalCheck, RENEWAL_INTERVAL_MS);
+
+// Log/cache retention cleanup - see Settings → Log & Cache Retention
+// (default 30 days, configurable). Runs once shortly after boot and then
+// every 24h; staggered a bit after the renewal check above so the two
+// don't both fire in the same instant.
+const RETENTION_INTERVAL_MS = Number(process.env.RETENTION_INTERVAL_MS || 24 * 60 * 60 * 1000);
+function runRetentionCheck() {
+  try {
+    runRetentionCleanup();
+  } catch (err) {
+    addLog("error", null, `Retention cleanup threw: ${String(err)}`);
+  }
+}
+setTimeout(runRetentionCheck, 120_000);
+setInterval(runRetentionCheck, RETENTION_INTERVAL_MS);
 
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console

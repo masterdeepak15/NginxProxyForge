@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { validateDefaultSiteSettings, applyDefaultSiteSettings } from "../lib/defaultSite";
+import { validateRetentionSettings } from "../lib/retention";
 import { addLog } from "../logs";
 
 export const settingsRouter = Router();
@@ -24,6 +25,15 @@ settingsRouter.patch("/", (req, res) => {
       return;
     }
     body.defaultSite = result.value;
+  }
+
+  if (body.retention !== undefined) {
+    const result = validateRetentionSettings(body.retention);
+    if (!result.ok) {
+      res.status(400).json({ error: { code: "invalid_retention", message: result.error } });
+      return;
+    }
+    body.retention = result.value;
   }
 
   const updated = { ...current, ...body };
