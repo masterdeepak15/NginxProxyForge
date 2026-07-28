@@ -8,11 +8,12 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { Provider as ReduxProvider } from "react-redux";
+import { Provider as ReduxProvider, useDispatch } from "react-redux";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { store } from "../store";
+import { store, type AppDispatch } from "../store";
+import { logout } from "../store/slices/authSlice";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { Toaster } from "../components/ui/sonner";
 
@@ -129,10 +130,38 @@ function RootComponent() {
     <ReduxProvider store={store}>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
+          <SessionExpiryWatcher />
           <Outlet />
           <Toaster />
         </ThemeProvider>
       </QueryClientProvider>
     </ReduxProvider>
   );
+}
+
+/**
+ * Listens for the "pf:auth-expired" event fired by the API client whenever
+ * a request comes back 401 (expired/invalid token). Clears redux auth
+ * state and sends the user back to /login, preserving where they were so
+ * they can be returned there after signing back in.
+ */
+function SessionExpiryWatcher() {
+  const dispatch = useDispatch<AppDispatch>();
+  const router = useRouter();
+
+  useEffect(() => {
+    const onExpired = () => {
+      dispatch(logout());
+      const current = router.state.location;
+      router.navigate({
+        to: "/login",
+        search: { redirect: current.href },
+        replace: true,
+      });
+    };
+    window.addEventListener("pf:auth-expired", onExpired);
+    return () => window.removeEventListener("pf:auth-expired", onExpired);
+  }, [dispatch, router]);
+
+  return null;
 }

@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { Card } from "@/components/ui/card";
 import { apiService, type MetricPoint } from "@/services/api";
+import { formatLocalTick, formatLocalDateTime } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 
 type ErrorEntry = Awaited<ReturnType<typeof apiService.getRecentErrors>>[number];
@@ -74,6 +75,7 @@ function MetricsPage() {
                 />
                 <XAxis
                   dataKey="time"
+                  tickFormatter={formatLocalTick}
                   stroke="var(--color-muted-foreground)"
                   fontSize={11}
                   tickLine={false}
@@ -85,7 +87,7 @@ function MetricsPage() {
                   tickLine={false}
                   axisLine={false}
                 />
-                <Tooltip contentStyle={tt} />
+                <Tooltip contentStyle={tt} labelFormatter={(v) => formatLocalDateTime(String(v))} />
                 <Bar dataKey="requests" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -103,6 +105,7 @@ function MetricsPage() {
                 />
                 <XAxis
                   dataKey="time"
+                  tickFormatter={formatLocalTick}
                   stroke="var(--color-muted-foreground)"
                   fontSize={11}
                   tickLine={false}
@@ -114,7 +117,7 @@ function MetricsPage() {
                   tickLine={false}
                   axisLine={false}
                 />
-                <Tooltip contentStyle={tt} />
+                <Tooltip contentStyle={tt} labelFormatter={(v) => formatLocalDateTime(String(v))} />
                 <Line
                   type="monotone"
                   dataKey="errors"
@@ -138,6 +141,7 @@ function MetricsPage() {
                 />
                 <XAxis
                   dataKey="time"
+                  tickFormatter={formatLocalTick}
                   stroke="var(--color-muted-foreground)"
                   fontSize={11}
                   tickLine={false}
@@ -149,7 +153,7 @@ function MetricsPage() {
                   tickLine={false}
                   axisLine={false}
                 />
-                <Tooltip contentStyle={tt} />
+                <Tooltip contentStyle={tt} labelFormatter={(v) => formatLocalDateTime(String(v))} />
                 <Line
                   type="monotone"
                   dataKey="latencyMs"

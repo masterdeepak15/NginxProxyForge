@@ -26,6 +26,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/StatusBadge";
 import { apiService, type MetricPoint } from "@/services/api";
+import { formatLocalTick, formatLocalDateTime } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { fetchWorkflows } from "@/store/slices/workflowsSlice";
 import { fetchDeployments } from "@/store/slices/deploymentsSlice";
@@ -150,6 +151,7 @@ function DashboardPage() {
                 />
                 <XAxis
                   dataKey="time"
+                  tickFormatter={formatLocalTick}
                   stroke="var(--color-muted-foreground)"
                   fontSize={11}
                   tickLine={false}
@@ -162,6 +164,7 @@ function DashboardPage() {
                   axisLine={false}
                 />
                 <Tooltip
+                  labelFormatter={(v) => formatLocalDateTime(String(v))}
                   contentStyle={{
                     background: "var(--color-popover)",
                     border: "1px solid var(--color-border)",
@@ -194,6 +197,7 @@ function DashboardPage() {
                 />
                 <XAxis
                   dataKey="time"
+                  tickFormatter={formatLocalTick}
                   stroke="var(--color-muted-foreground)"
                   fontSize={11}
                   tickLine={false}
@@ -206,6 +210,7 @@ function DashboardPage() {
                   axisLine={false}
                 />
                 <Tooltip
+                  labelFormatter={(v) => formatLocalDateTime(String(v))}
                   contentStyle={{
                     background: "var(--color-popover)",
                     border: "1px solid var(--color-border)",

@@ -136,7 +136,14 @@ async function request<T>(
   if (!res.ok) {
     const message = body?.error?.message || res.statusText || "Request failed";
     if (res.status === 401 && typeof window !== "undefined") {
+      const hadSession = !!window.localStorage.getItem("pf_auth");
       window.localStorage.removeItem("pf_auth");
+      // Notify the app shell so it can clear redux auth state and redirect
+      // to /login. Only fire if we actually had a session — avoids bouncing
+      // an already-logged-out user (e.g. the login page's own 401s).
+      if (hadSession) {
+        window.dispatchEvent(new CustomEvent("pf:auth-expired"));
+      }
     }
     throw new Error(message);
   }
@@ -346,6 +353,30 @@ export const apiService = {
     Array<{ ts: string; level: "info" | "warn" | "error"; workflowId?: string; message: string }>
   > {
     return get("/logs", filters as Record<string, string | number | undefined>);
+  },
+  /**
+   * Server-side paginated log query, used by the Logs page. Passing
+   * `page`/`pageSize` switches the backend into paginated mode, which
+   * returns `{ data, total, page, pageSize }` instead of a bare array.
+   */
+  async getLogsPage(params: {
+    page: number;
+    pageSize: number;
+    q?: string;
+    workflowId?: string;
+    level?: string;
+  }): Promise<{
+    data: Array<{
+      ts: string;
+      level: "info" | "warn" | "error";
+      workflowId?: string;
+      message: string;
+    }>;
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    return get("/logs", params as Record<string, string | number | undefined>);
   },
 
   // Settings

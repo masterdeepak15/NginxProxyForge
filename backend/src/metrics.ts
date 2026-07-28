@@ -131,7 +131,6 @@ export interface MetricPoint {
 }
 
 export function getTrafficSeries(range: "1h" | "24h" | "7d" | "30d", workflowId?: string): MetricPoint[] {
-  const buckets: Record<string, "hour" | "day"> = { "1h": "hour", "24h": "hour", "7d": "day", "30d": "day" };
   const windowMs: Record<string, number> = {
     "1h": 3_600_000,
     "24h": 86_400_000,
@@ -153,9 +152,12 @@ export function getTrafficSeries(range: "1h" | "24h" | "7d" | "30d", workflowId?
     const errors = inBucket.filter((e) => e.status >= 500).length;
     const latencies = inBucket.map((e) => e.requestTimeMs).filter((v): v is number => v !== null);
     const avgLatency = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : 0;
-    const label = new Date(bucketEnd);
+    // Return the raw bucket-end instant as an ISO/UTC timestamp rather than
+    // a pre-formatted "HH:00" string. Formatting hour/day labels here would
+    // bake in the *server's* timezone; the frontend converts this to the
+    // viewer's local timezone for display (see dashboard.tsx / metrics.tsx).
     points.push({
-      time: buckets[range] === "day" ? label.toISOString().slice(5, 10) : `${label.getHours().toString().padStart(2, "0")}:00`,
+      time: new Date(bucketEnd).toISOString(),
       requests: inBucket.length,
       errors,
       latencyMs: avgLatency,
