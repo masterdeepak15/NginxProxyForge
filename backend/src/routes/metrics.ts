@@ -19,8 +19,9 @@ metricsRouter.get("/domains", (req, res) => {
 
 metricsRouter.get("/errors", (req, res) => {
   const range = (req.query.range as any) || "24h";
-  const limit = req.query.limit ? Number(req.query.limit) : 50;
-  res.json(getRecentErrors(range, limit));
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
+  res.json(getRecentErrors(range, { page, pageSize }));
 });
 
 metricsRouter.get("/stats", (_req, res) => {

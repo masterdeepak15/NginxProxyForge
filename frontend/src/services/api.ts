@@ -320,11 +320,16 @@ export const apiService = {
   }> {
     return get("/metrics/domains", { range, limit });
   },
+  /**
+   * Server-side paginated. The backend caps the "Recent errors" universe
+   * at the latest 100 entries within the rolling last-24h window; page/
+   * pageSize slice within that capped set (pageSize is clamped to 100).
+   */
   async getRecentErrors(
     range: "1h" | "24h" | "7d" | "30d" = "24h",
-    limit = 50,
-  ): Promise<
-    {
+    opts: { page?: number; pageSize?: number } = {},
+  ): Promise<{
+    data: {
       time: string;
       level: string;
       type: string;
@@ -334,9 +339,12 @@ export const apiService = {
       client: string | null;
       request: string | null;
       upstream: string | null;
-    }[]
-  > {
-    return get("/metrics/errors", { range, limit });
+    }[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    return get("/metrics/errors", { range, page: opts.page, pageSize: opts.pageSize });
   },
   async getNodeStats(nodeId: string, range: StatsRange): Promise<NodeStats> {
     return get(`/metrics/nodes/${nodeId}`, { range });

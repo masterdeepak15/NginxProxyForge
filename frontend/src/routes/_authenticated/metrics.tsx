@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -12,11 +12,22 @@ import {
   YAxis,
 } from "recharts";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiService, type MetricPoint } from "@/services/api";
 import { formatLocalTick, formatLocalDateTime } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 
-type ErrorEntry = Awaited<ReturnType<typeof apiService.getRecentErrors>>[number];
+type ErrorEntry = Awaited<ReturnType<typeof apiService.getRecentErrors>>["data"][number];
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 const LEVEL_STYLES: Record<string, string> = {
   crit: "bg-red-500/15 text-red-500",
@@ -37,15 +48,31 @@ export const Route = createFileRoute("/_authenticated/metrics")({
 function MetricsPage() {
   const [data, setData] = useState<MetricPoint[]>([]);
   const [errors, setErrors] = useState<ErrorEntry[]>([]);
+  const [errorsTotal, setErrorsTotal] = useState(0);
+  const [errorsPage, setErrorsPage] = useState(1);
+  const [errorsPageSize, setErrorsPageSize] = useState<number>(25);
   const [loadingErrors, setLoadingErrors] = useState(true);
 
   useEffect(() => {
     apiService.getMetrics().then(setData);
-    apiService
-      .getRecentErrors()
-      .then(setErrors)
-      .finally(() => setLoadingErrors(false));
   }, []);
+
+  const loadErrors = useCallback(() => {
+    setLoadingErrors(true);
+    return apiService
+      .getRecentErrors("24h", { page: errorsPage, pageSize: errorsPageSize })
+      .then((res) => {
+        setErrors(res.data);
+        setErrorsTotal(res.total);
+      })
+      .finally(() => setLoadingErrors(false));
+  }, [errorsPage, errorsPageSize]);
+
+  useEffect(() => {
+    loadErrors();
+  }, [loadErrors]);
+
+  const errorsTotalPages = Math.max(1, Math.ceil(errorsTotal / errorsPageSize));
 
   const tt = {
     background: "var(--color-popover)",
@@ -169,12 +196,34 @@ function MetricsPage() {
 
       {/* Recent errors: what, where, from - not just a count */}
       <Card className="p-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-sm font-medium">Recent errors</div>
             <p className="text-xs text-muted-foreground">
-              Parsed from each domain's nginx error log — last 24h
+              Parsed from each domain's nginx error log — latest {errorsTotal} of the last 24h (100
+              max)
             </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Rows</span>
+            <Select
+              value={String(errorsPageSize)}
+              onValueChange={(v) => {
+                setErrorsPageSize(Number(v));
+                setErrorsPage(1);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[72px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div className="mt-4 overflow-x-auto">
@@ -192,7 +241,7 @@ function MetricsPage() {
               {errors.map((e, i) => (
                 <tr key={i} className="align-top">
                   <td className="whitespace-nowrap py-2 pr-4 text-xs text-muted-foreground">
-                    {new Date(e.time).toLocaleString()}
+                    {formatLocalDateTime(e.time)}
                   </td>
                   <td className="py-2 pr-4">
                     <span
@@ -221,12 +270,44 @@ function MetricsPage() {
               ))}
             </tbody>
           </table>
+          {loadingErrors && (
+            <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
+          )}
           {!loadingErrors && errors.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
               No errors logged in this window.
             </p>
           )}
         </div>
+        {!loadingErrors && errorsTotal > 0 && (
+          <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Showing {(errorsPage - 1) * errorsPageSize + 1}–
+              {Math.min(errorsPage * errorsPageSize, errorsTotal)} of {errorsTotal}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={errorsPage <= 1}
+                onClick={() => setErrorsPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Prev
+              </Button>
+              <span>
+                Page {errorsPage} of {errorsTotalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={errorsPage >= errorsTotalPages}
+                onClick={() => setErrorsPage((p) => Math.min(errorsTotalPages, p + 1))}
+              >
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

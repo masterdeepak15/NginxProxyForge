@@ -288,6 +288,8 @@ function listAllErrorLogFiles(): string[] {
   return fs.readdirSync(LOG_DIR).filter((f) => f.endsWith(".error.log"));
 }
 
+const RECENT_ERRORS_HARD_CAP = 100;
+
 /**
  * Parses the real nginx error log (already being written per-domain, see
  * domainErrorLogFile in graphScope.ts / nginxGenerator.ts's `error_log`
@@ -297,8 +299,16 @@ function listAllErrorLogFiles(): string[] {
  * (client IP / upstream target) — replacing the previous "errors" signal,
  * which was just a count of >=500 access-log responses with no detail on
  * why. Most recent first.
+ *
+ * The Metrics page shows this as a table with server-side pagination: the
+ * universe considered is always the latest `RECENT_ERRORS_HARD_CAP` (100)
+ * entries within the rolling last-24h window (anchored to Date.now(), same
+ * as getTrafficSeries), and `page`/`pageSize` slice within that capped set.
  */
-export function getRecentErrors(range: "1h" | "24h" | "7d" | "30d", limit = 50): ErrorEntry[] {
+export function getRecentErrors(
+  range: "1h" | "24h" | "7d" | "30d",
+  opts: { page?: number; pageSize?: number } = {},
+): { data: ErrorEntry[]; total: number; page: number; pageSize: number } {
   const windowMs: Record<string, number> = {
     "1h": 3_600_000,
     "24h": 86_400_000,
@@ -346,7 +356,17 @@ export function getRecentErrors(range: "1h" | "24h" | "7d" | "30d", limit = 50):
   }
 
   entries.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-  return entries.slice(0, limit);
+  // Only ever consider the latest 100 — this is the table's whole universe,
+  // regardless of how many errors actually landed in the window.
+  const capped = entries.slice(0, RECENT_ERRORS_HARD_CAP);
+  const total = capped.length;
+
+  const pageSize = Math.min(RECENT_ERRORS_HARD_CAP, Math.max(1, opts.pageSize ?? 25));
+  const page = Math.max(1, opts.page ?? 1);
+  const start = (page - 1) * pageSize;
+  const data = capped.slice(start, start + pageSize);
+
+  return { data, total, page, pageSize };
 }
 
 /**
