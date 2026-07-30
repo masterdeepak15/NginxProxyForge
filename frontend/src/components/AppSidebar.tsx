@@ -8,6 +8,7 @@ import {
   FileText,
   Settings,
   Zap,
+  BookOpen,
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,12 +34,14 @@ const observability = [
   { title: "Logs", url: "/logs", icon: FileText },
 ];
 
-const system = [{ title: "Settings", url: "/settings", icon: Settings }];
+const system = [
+  { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Documentation", url: "/docs", icon: BookOpen },
+];
 
 export function AppSidebar() {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
-  const isActive = (p: string) =>
-    currentPath === p || (p !== "/" && currentPath.startsWith(p));
+  const isActive = (p: string) => currentPath === p || (p !== "/" && currentPath.startsWith(p));
 
   const section = (label: string, items: typeof main) => (
     <SidebarGroup>

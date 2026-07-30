@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedMetricsRouteImport } from './routes/_authenticated/metrics'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated/logs'
+import { Route as AuthenticatedDocsRouteImport } from './routes/_authenticated/docs'
 import { Route as AuthenticatedDeploymentsRouteImport } from './routes/_authenticated/deployments'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCertificatesRouteImport } from './routes/_authenticated/certificates'
@@ -48,6 +49,11 @@ const AuthenticatedMetricsRoute = AuthenticatedMetricsRouteImport.update({
 const AuthenticatedLogsRoute = AuthenticatedLogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedDocsRoute = AuthenticatedDocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedDeploymentsRoute =
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/certificates': typeof AuthenticatedCertificatesRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deployments': typeof AuthenticatedDeploymentsRoute
+  '/docs': typeof AuthenticatedDocsRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/metrics': typeof AuthenticatedMetricsRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/certificates': typeof AuthenticatedCertificatesRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/deployments': typeof AuthenticatedDeploymentsRoute
+  '/docs': typeof AuthenticatedDocsRoute
   '/logs': typeof AuthenticatedLogsRoute
   '/metrics': typeof AuthenticatedMetricsRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/_authenticated/certificates': typeof AuthenticatedCertificatesRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/deployments': typeof AuthenticatedDeploymentsRoute
+  '/_authenticated/docs': typeof AuthenticatedDocsRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/metrics': typeof AuthenticatedMetricsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/certificates'
     | '/dashboard'
     | '/deployments'
+    | '/docs'
     | '/logs'
     | '/metrics'
     | '/settings'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/certificates'
     | '/dashboard'
     | '/deployments'
+    | '/docs'
     | '/logs'
     | '/metrics'
     | '/settings'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/_authenticated/certificates'
     | '/_authenticated/dashboard'
     | '/_authenticated/deployments'
+    | '/_authenticated/docs'
     | '/_authenticated/logs'
     | '/_authenticated/metrics'
     | '/_authenticated/settings'
@@ -208,6 +220,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLogsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/docs': {
+      id: '/_authenticated/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof AuthenticatedDocsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/deployments': {
       id: '/_authenticated/deployments'
       path: '/deployments'
@@ -250,6 +269,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCertificatesRoute: typeof AuthenticatedCertificatesRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDeploymentsRoute: typeof AuthenticatedDeploymentsRoute
+  AuthenticatedDocsRoute: typeof AuthenticatedDocsRoute
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedMetricsRoute: typeof AuthenticatedMetricsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -261,6 +281,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCertificatesRoute: AuthenticatedCertificatesRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDeploymentsRoute: AuthenticatedDeploymentsRoute,
+  AuthenticatedDocsRoute: AuthenticatedDocsRoute,
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedMetricsRoute: AuthenticatedMetricsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
