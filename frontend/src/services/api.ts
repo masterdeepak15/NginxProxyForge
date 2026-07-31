@@ -227,6 +227,9 @@ export const apiService = {
   async rollbackWorkflow(id: string, toVersion: number): Promise<Workflow> {
     return post(`/workflows/${id}/rollback`, { toVersion });
   },
+  async deleteWorkflowVersion(id: string, version: number): Promise<void> {
+    return del(`/workflows/${id}/versions/${version}`);
+  },
   async deployWorkflow(id: string, message?: string): Promise<Deployment> {
     return post(`/workflows/${id}/deploy`, { message });
   },

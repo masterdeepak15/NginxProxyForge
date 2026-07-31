@@ -22,6 +22,9 @@ NginxProxyForge/
 +-- Dockerfile            Single multi-stage build for the whole app
 +-- docker-compose.yml    One service, one bind-mounted data folder
 +-- API.md                Full REST API reference (source of truth for both sides)
++-- docs/
+    +-- SECURITY_AUDIT.md  Findings from the latest manual security review
+    +-- ROADMAP.md          Feature ideas under consideration
 ```
 
 ## Architecture
