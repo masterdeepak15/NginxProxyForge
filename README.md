@@ -11,6 +11,23 @@ you a dashboard for deployments, certificates, metrics, and logs.
 Ships as a **single Docker image** containing the UI, the API, and the real
 `nginx` binary - no external database, no separate services.
 
+## 📸 Screenshots
+
+### Dashboard
+![Dashboard](docs/Images/Dashboard.jpeg)
+
+### Workspace
+![Workspace](docs/Images/Workspace.jpeg)
+
+### LB Workspace
+![LB Workspace](docs/Images/LB-Workspace.jpeg)
+
+### Metrics
+![Metrics](docs/Images/Metrics.jpeg)
+
+### Documentation
+![Documentation](docs/Images/Docs.jpeg)
+
 ## Repository layout (umbrella)
 
 ```
